@@ -1,0 +1,1743 @@
+/* 手写样式，不引入任何 UI 框架。
+ *
+ * 主题：默认浅色（用户偏好），深色通过 prefers-color-scheme 自动切换。
+ * 为什么用媒体查询而不是给 <html> 加 data-theme 属性：
+ *   主进程设置 nativeTheme.themeSource 后，媒体查询在**首次绘制前**就已生效，
+ *   所以深色模式下不会先闪一下白底。（用 JS 在挂载后切属性做不到这一点，
+ *   而用内联脚本会被生产环境的 CSP 拦掉。）
+ *
+ * 字号缩放：**所有 font-size 都写成 calc(Npx * var(--fs-scale))**，
+ *   由设置页的字号选项改 --fs-scale（默认 1）。这样不必把 45 处字号逐个
+ *   改成 rem/em，也不会出现嵌套元素 em 复合放大的问题。
+ *
+ * ⚠ 新增 font-size 时必须沿用这个写法，否则那一处不会跟随字号设置。
+ */
+
+:root {
+  /* 字号缩放系数，由界面根据设置覆盖 */
+  --fs-scale: 1;
+
+  /*
+   * 界面字体。用户可在设置里更换。
+   *
+   * ⚠ 无论换成哪个字体，**末尾都必须保留一个中文字体**：
+   *   否则中文会落到系统默认的宋体（SimSun），在界面里非常突兀 ——
+   *   等宽字体栈就是这样出的问题（见 .mono / .bio-block）。
+   */
+  --font-ui: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system,
+    sans-serif;
+  /* 等宽字体：拉丁用 Cascadia Mono，中文明确指定雅黑，避免 fallback 到宋体 */
+  --font-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace;
+
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --border: #e3e6ec;
+  --border-strong: #d3d8e0;
+  --text: #1f2430;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: #e8f0fe;
+  --ok: #15803d;
+  --warn: #b45309;
+  --warn-soft: #fffbeb;
+  --warn-strong: #92400e;
+  --error: #b91c1c;
+  --error-soft: #fef2f2;
+
+  --input-bg: #ffffff;
+  --input-border: #d3d8e0;
+  --code-bg: #f3f4f6;
+  --code-text: #1e3a8a;
+  --status-bg: #f1f5f9;
+  --status-border: #94a3b8;
+
+  --btn-bg: #2563eb;
+  --btn-bg-hover: #1d4ed8;
+  --btn-text: #ffffff;
+  --ghost-hover: #eef1f5;
+
+  --focus-ring: rgba(37, 99, 235, 0.16);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --diff-add-bg: #dcfce7;
+  --diff-add-text: #14532d;
+  --diff-del-bg: #fee2e2;
+  --diff-del-text: #7f1d1d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161c;
+    --card: #1c1f27;
+    --border: #2b303c;
+    --border-strong: #3a4a6e;
+    --text: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #6ea8fe;
+    --accent-soft: #1b2a44;
+    --ok: #5fd08a;
+    --warn: #f0b46b;
+    --warn-soft: #2a2113;
+    --warn-strong: #f5c98b;
+    --error: #f08a8a;
+    --error-soft: #2c1a1a;
+
+    --input-bg: #10131a;
+    --input-border: #2b303c;
+    --code-bg: #10131a;
+    --code-text: #cfe0ff;
+    --status-bg: #1a2030;
+    --status-border: #3a4a6e;
+
+    --btn-bg: #26304a;
+    --btn-bg-hover: #2f3b5c;
+    --btn-text: #e6e8ee;
+    --ghost-hover: #232833;
+
+    --focus-ring: rgba(110, 168, 254, 0.14);
+    --shadow: none;
+    --diff-add-bg: #14351f;
+    --diff-add-text: #86efac;
+    --diff-del-bg: #3b1a1a;
+    --diff-del-text: #fca5a5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: calc(14px * var(--fs-scale));
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  /* 滚动交给 .app-content：否则会出现内外两条滚动条 */
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   独立登录页（未登录时整个界面只有它 —— 见 App.tsx 的两层门禁注释）
+   ========================================================================== */
+
+.login-page {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 24px 48px;
+}
+
+.login-topbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.login-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  flex-wrap: wrap;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+.login-hero {
+  flex: 1 1 320px;
+  max-width: 420px;
+  user-select: none;
+}
+
+.login-title {
+  font-size: calc(26px * var(--fs-scale));
+  margin: 0 0 8px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.login-subtitle {
+  margin: 0 0 18px;
+}
+
+.login-features {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: calc(13.5px * var(--fs-scale));
+}
+
+.login-features li {
+  margin-bottom: 6px;
+}
+
+.login-form-wrap {
+  flex: 0 1 380px;
+  min-width: 300px;
+}
+
+.login-form-wrap .card {
+  margin-bottom: 0;
+}
+
+.login-privacy {
+  margin: 12px 2px 0;
+  font-size: calc(12.5px * var(--fs-scale));
+}
+
+/* 需要保留换行的长段落（文案里含 \n） */
+.preline {
+  white-space: pre-line;
+}
+
+/* --- 模态对话框（反馈用）--- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.34);
+  z-index: 40;
+}
+
+.modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  z-index: 41;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.26);
+  padding: 20px 22px 24px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-head h2 {
+  margin: 0;
+}
+
+/* 诊断信息是等宽的日志文本，必须用等宽字体（这是真正的"代码块"场景） */
+.diag-textarea {
+  font-family: var(--font-mono);
+  font-size: calc(11.5px * var(--fs-scale));
+  line-height: 1.5;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+
+.modal-actions {
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   应用外壳：左侧导航 + 右侧主区
+   ========================================================================== */
+
+.app-shell {
+  display: flex;
+  height: 100%;
+}
+
+.sidebar {
+  /* 宽度跟随字号缩放：否则字号调大后侧栏文字会被挤到换行 */
+  width: calc(190px * var(--fs-scale));
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  padding: 18px 12px 14px;
+  user-select: none;
+}
+
+.brand {
+  padding: 0 8px 18px;
+}
+
+/*
+ * 应用名：**一行**显示（用户指定），18px、加粗。
+ * 「VRC」用主题色、「BioWatcher」用正文色 —— 用颜色区分而不是拆成两行。
+ *
+ * ⚠ 字号不要往上调：侧栏宽度有限，"VRCBioWatcher" 这一行 13 个字符，
+ *   20px 时会超出侧栏被截断（用户实测），18px 刚好放得下。
+ */
+.brand-title {
+  font-size: calc(18px * var(--fs-scale));
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.brand-accent {
+  color: var(--accent);
+}
+
+/* 导航项上的异常标记（红色小圆点带感叹号）
+   文字色用 --bg：浅色主题下是白字配深红，深色主题下是深字配浅红，两种都清楚。 */
+.nav-alert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--error);
+  color: var(--bg);
+  font-size: calc(10px * var(--fs-scale));
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+button.nav-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  color: var(--muted);
+  padding: 8px 12px;
+  font-size: calc(14px * var(--fs-scale));
+}
+
+button.nav-item:hover:not(:disabled) {
+  background: var(--ghost-hover);
+  color: var(--text);
+}
+
+button.nav-item.active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  /*
+   * ⚠ 不要居中！之前加了 justify-content: center，
+   *   结果数字和标签整块被推到中间，和上面的导航列表完全对不齐，很怪。
+   *   只有下面的「账号名」是居中的。
+   */
+  justify-content: flex-start;
+  padding-left: 12px;
+}
+
+.sidebar-stat .n {
+  font-size: calc(15px * var(--fs-scale));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+.sidebar-stat .k {
+  font-size: calc(12px * var(--fs-scale));
+  color: var(--muted);
+}
+
+/* --- 账号区（点击展开退出登录）--- */
+
+.sidebar-account-wrap {
+  position: relative;
+  margin-top: 10px;
+}
+
+button.sidebar-account {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 7px 8px;
+  /* 居中 + 字号大一点（用户要求）；绿点在名字左边 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: calc(14px * var(--fs-scale));
+  color: var(--text);
+  overflow: hidden;
+}
+
+button.sidebar-account:hover:not(:disabled) {
+  background: var(--ghost-hover);
+  border-color: var(--border);
+}
+
+.sidebar-account-menu {
+  position: absolute;
+  /*
+   * ★ 弹在名字的**右侧**，不是上方（用户要求）。
+   *   侧栏很窄，弹在上方会盖住统计数字；弹到右侧则完全在内容区上方飘着，
+   *   视觉上像是"从名字旁边展开"。
+   */
+  left: calc(100% + 6px);
+  bottom: 0;
+  min-width: 120px;
+  z-index: 20;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+}
+
+.sidebar-account-menu button {
+  width: 100%;
+  font-size: calc(13px * var(--fs-scale));
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 22px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.scan-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: calc(13px * var(--fs-scale));
+  color: var(--accent);
+}
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: vrcbw-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* 启动时的大转圈（和上面那个小的共用 keyframes，只是更大） */
+.spinner-lg {
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
+}
+
+@keyframes vrcbw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * 启动加载屏。
+ *
+ * 为什么需要：启动时要向 VRChat 发一次 `GET /auth/user` 验证保存的会话，
+ * 这一步是**网络请求**，慢的时候要几秒。之前这里只显示一个「…」，
+ * 其余全白 —— 看起来像卡死或者坏了（用户反馈）。
+ * 现在给出转圈 + 明确文字 + 应用名，让人知道程序在工作。
+ */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--bg);
+  color: var(--muted);
+  user-select: none;
+}
+
+.loading-screen .loading-name {
+  font-size: calc(18px * var(--fs-scale));
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.loading-screen .loading-text {
+  font-size: calc(13px * var(--fs-scale));
+}
+
+.app-content {
+  flex: 1;
+  /* min-height: 0 是必须的：flex 子项默认 min-height:auto，会让内部滚动失效 */
+  min-height: 0;
+  overflow-y: auto;
+  /*
+   * 上下左右与卡片之间的间距**统一成同一个值**（20px）。
+   *
+   * 之前是 padding 18px + gap 16px，再加上 .card 的 margin-bottom 没被重置（见下），
+   * 于是"顶部 18px、卡片之间 32px、底部 34px"三种间距并存 —— 用户一眼就看出不齐。
+   * 统一后上下与左右一致（左右本来就是 20px）。
+   */
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/*
+ * ★ 这条不能删，而且必须写得比 `.card` 更具体（这个教训值得留着）。
+ *
+ *   背景：`.card` 曾经自带 `margin-bottom: 16px`，而这里也有一条 margin-bottom: 0。
+ *   两者优先级相同（0,1,0）、.card 写在更后面 → 后写的赢 → **重置从来没生效**。
+ *   于是卡片的 margin 与容器的 gap 叠加：卡片间距变 32px、底边距变 34px，
+ *   而顶部只有 18px，三种间距并存（用户报的"间隔不一致"就是这个）。
+ *
+ *   现在 .card 已经不带 margin 了，这条作为**保险**留着：
+ *   以后谁再给卡片加外边距，这里仍然能压住。
+ */
+.app-content > .card {
+  margin-bottom: 0;
+}
+
+/*
+ * 卡片跟随窗口宽度自适应。
+ *
+ * 之前这里是 max-width: 1000px + margin auto，全屏时卡片会孤零零地固定在中间。
+ * 现在只保留一个很宽的兜底上限（超宽屏下避免行太长反而难读），
+ * 在常见分辨率下等价于「撑满可用宽度」。
+ */
+.app-content > * {
+  width: 100%;
+  max-width: 2400px;
+  margin-left: auto;
+  margin-right: auto;
+  /* 默认按内容高度；需要撑满窗口的卡片自己加 .fill-height */
+  flex: 0 0 auto;
+  /* 卡片间距由容器的 gap 统一控制，避免和 .card 的 margin-bottom 叠加 */
+  margin-bottom: 0;
+}
+
+/*
+ * 撑满剩余高度的卡片（好友列表用）。
+ *
+ * 之前 .table-scroll 写死 max-height: 460px，全屏时表格只有一小条、里面自己滚动。
+ * 现在让卡片吃掉窗口的剩余高度，表格在卡片内部滚动 ——
+ * 这样 box 高度真正跟随窗口，表头和工具栏也始终留在视野里。
+ */
+.app-content > .card.fill-height {
+  flex: 1 1 auto;
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+
+.card.fill-height .table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+/* 大按钮：扫描是这个工具唯一的"主动作"，值得更显眼 */
+button.primary-big {
+  font-size: calc(15px * var(--fs-scale));
+  padding: 11px 26px;
+  border-radius: 8px;
+}
+
+.scan-actions {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+/*
+ * 卡片标题行：标题在左，工具（搜索框、筛选按钮）在右。
+ * 用 flex-wrap 让它**宽度不够时自动换行**（用户明确要求的行为）。
+ */
+.card-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.card-head-row h2 {
+  margin-bottom: 0;
+}
+
+/* 标题行右侧那组工具：始终靠右，内部也允许换行 */
+.card-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+  /*
+   * ★ flex-shrink: 0 是关键，别删。
+   *
+   *   默认 flex-shrink 是 1，意味着这组工具**会被压缩**：外层行还有空间时它先变窄，
+   *   于是它内部的搜索框被挤到第二行 —— 表现出来就是
+   *   「筛选按钮在上一排、搜索框在下一排、中间一大片空白」，而标题因为
+   *   align-items:center 被垂直居中，看着像是掉到了两排中间。
+   *   禁止压缩后：能放下就一行放下，放不下则**整组**换到下一行，绝不会内部拆散。
+   */
+  flex-shrink: 0;
+  /* 极窄窗口下的兜底：整组最宽不超过容器，超了才允许内部换行 */
+  max-width: 100%;
+}
+
+/* 标题行里的搜索框窄一点，给筛选按钮留出空间（这是"必须一排放下"的取舍） */
+.card-head-tools .search-input {
+  flex: 0 1 200px;
+}
+
+.theme-switch-inline {
+  display: inline-flex;
+  width: fit-content;
+}
+
+.tag-test {
+  font-size: calc(10.5px * var(--fs-scale));
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+}
+
+.friends-table tbody tr.clickable {
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   好友详情抽屉
+   ========================================================================== */
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.28);
+  z-index: 20;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* 宽度跟随字号缩放，但不超过窗口的 86% */
+  width: calc(520px * var(--fs-scale));
+  max-width: 86vw;
+  z-index: 21;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  box-shadow: -10px 0 28px rgba(15, 23, 42, 0.16);
+  overflow-y: auto;
+  padding: 20px 22px 40px;
+  user-select: none;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.drawer-title {
+  font-size: calc(18px * var(--fs-scale));
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.drawer-sub {
+  font-size: calc(12.5px * var(--fs-scale));
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawer-section {
+  margin-bottom: 22px;
+}
+
+.drawer-section h3 {
+  font-size: calc(13px * var(--fs-scale));
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 10px;
+  letter-spacing: 0.3px;
+}
+
+/*
+ * 简介原文 / 简介链接。
+ *
+ * ⚠ 这里**刻意不用等宽字体**：它不是代码块，是一段散文。
+ *   之前用等宽栈导致中文落到系统默认的宋体，和界面其他地方不一致。
+ *   保留换行靠的是 white-space: pre-wrap（那才是让简介保持排版的东西），
+ *   跟字体是不是等宽无关。
+ */
+.bio-block {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 11px 13px;
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-ui);
+  font-size: calc(12.5px * var(--fs-scale));
+  color: var(--text);
+  user-select: text;
+}
+
+/* 应用是本地工具，不需要文本选择光标到处出现；但代码和路径要能复制 */
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 26px 24px 56px;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+h1 {
+  font-size: calc(21px * var(--fs-scale));
+  margin: 0 0 4px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+h2 {
+  font-size: calc(14px * var(--fs-scale));
+  margin: 0 0 14px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.3px;
+}
+
+p {
+  margin: 0 0 10px;
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+
+
+
+/*
+ * ★ 卡片**不设外边距**：卡片之间的间距统一由 .app-content 的 gap 控制。
+ *
+ *   这里原来写着 `margin-bottom: 16px`，而 .app-content 里又有一条
+ *   `.app-content > * { margin-bottom: 0 }` —— 两者优先级相同（都是 0,1,0），
+ *   而 .card 写在文件更后面，于是"后写的赢"，那条重置**从来没生效过**。
+ *   结果 margin 和 gap 叠加：卡片间距 32px、底边距 34px，而顶部只有 18px，
+ *   三种间距并存，用户一眼就看出不齐。
+ *
+ *   现在只有一个来源（gap），不会再打架。
+ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+
+.error-card {
+  border-color: var(--error);
+}
+
+.error-card h2 {
+  color: var(--error);
+}
+
+.row {
+  display: flex;
+  /*
+   * ★ 垂直居中。
+   *   右侧可能是文本、可能是一个更高的输入框/按钮组，如果按顶部对齐，
+   *   左侧的标签就会显得"浮在上面"（用户报的问题）。
+   */
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+  /* 实线（用户要求：全部虚线改实线，虚线看着碎） */
+  border-bottom: 1px solid var(--border);
+}
+
+/*
+ * ⚠ 这里原本写的是 `.row:last-of-type`，但它**不管用**：
+ *   `:last-of-type` 匹配的是"同一种元素的最后一个"（这里是 div），
+ *   而卡片里最后几个 div 是 .setting-group，不是 .row ——
+ *   所以每一条 .row 都留着下边框，紧跟其后的 .setting-group 又加了一条上边框，
+ *   于是「字号缩放」和「自动条数」之间出现了**两条线**（用户报的就是这个）。
+ *
+ * 正确做法：
+ *   1. 最后一条（如果后面没有兄弟）不要边框
+ *   2. 紧跟着分组的那条不要边框 —— 分割线由分组自己提供
+ */
+.row:last-child {
+  border-bottom: none;
+}
+
+.row + .setting-group {
+  border-top: none;
+  margin-top: 14px;
+  padding-top: 0;
+}
+
+.row-label {
+  flex: 0 0 96px;
+  color: var(--muted);
+  font-size: calc(13px * var(--fs-scale));
+  /* 标签本身多行时也保持与右侧首行对齐 */
+  line-height: 1.5;
+}
+
+/*
+ * 加宽的标签列：给「React / React DOM」「Chromium / Node.js」这类较长的名字用。
+ * 默认 96px 放不下，会折成两行，看起来像排版坏了。
+ */
+.row-label.wide {
+  flex: 0 0 200px;
+}
+
+/*
+ * 设置项分组：组与组之间加一条实线分割。
+ *
+ * 为什么需要：`.row` 的虚线只加在相邻的 .row 之间，而复选框那种"裸"的项
+ * 完全没有分割，几组设置连在一起就看不出层次（用户反馈过这个问题）。
+ * 把一组相关设置包进来即可；首组不需要分割线。
+ */
+.setting-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.setting-group:first-of-type {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* 组内的复选框之间不要额外空太多 */
+.setting-group .checkbox + .checkbox {
+  margin-top: 2px;
+}
+
+/* 分组本身如果是卡片里第一个元素，也不要上分割线 */
+.setting-group:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.row-value {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+  user-select: text;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: calc(12.5px * var(--fs-scale));
+}
+
+.muted {
+  color: var(--muted);
+  font-size: calc(13px * var(--fs-scale));
+}
+
+/* 已删除未使用的 .code 规则（没有任何组件在用；它带着等宽字体，容易误导） */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+button {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 7px 15px;
+  font-size: calc(13px * var(--fs-scale));
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--btn-bg-hover);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 次要动作（返回、打开目录、主题切换）用低调的描边样式，避免和主操作抢注意力 */
+button.ghost {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--muted);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--ghost-hover);
+  color: var(--text);
+}
+
+button.danger {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--error);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--ghost-hover);
+}
+
+/* --- 表单 --- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > span {
+  font-size: calc(13px * var(--fs-scale));
+  color: var(--muted);
+}
+
+/*
+ * ⚠ 这条共享规则里**不能写 width**。
+ *   属性选择器 input[type='text'] 的优先级高于 .font-name-input / .page-size-input
+ *   这类类选择器 —— 一旦在这里写 width: 100%，那些字段的专用宽度就全部失效，
+ *   变成撑满整行的输入框（这个错真的犯过一次）。
+ *   需要整行宽的只有 textarea，见下面单独一条。
+ */
+input[type='text'],
+input[type='password'],
+input[type='number'],
+textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: calc(14px * var(--fs-scale));
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+input[type='text']:focus,
+input[type='password']:focus,
+input[type='number']:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* 只有多行输入框需要整行宽 + 可纵向拉伸（反馈问题描述、诊断信息） */
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: calc(13px * var(--fs-scale));
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/*
+ * 带括号提示的复选框：提示跟在文字右边（同一行）。
+ *
+ * ⚠ 不要给 .checkbox-text 单独设颜色 —— label.checkbox 整体是 --muted，
+ *   单独把这一行的文字改成 --text（近黑）会让它在一排选项里特别突兀
+ *   （用户反馈过）。它和别的选项用同一个颜色，靠后面的括号提示补足信息就够了。
+ */
+label.checkbox.checkbox-with-hint {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.checkbox-with-hint .checkbox-hint {
+  font-size: calc(12px * var(--fs-scale));
+}
+
+/* --- 状态显示 --- */
+
+.status-line {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: var(--status-bg);
+  border-left: 3px solid var(--status-border);
+  color: var(--text);
+  font-size: calc(13px * var(--fs-scale));
+}
+
+.status-line.error {
+  border-left-color: var(--error);
+  color: var(--error);
+}
+
+.login-ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: calc(15px * var(--fs-scale));
+  margin-bottom: 6px;
+}
+
+.dot-ok {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+  flex-shrink: 0;
+}
+
+/* --- 扫描进度 --- */
+
+.progress-outer {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  margin: 12px 0 8px;
+}
+
+.progress-inner {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.scan-stats {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+}
+
+.scan-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.scan-stat .n {
+  font-size: calc(19px * var(--fs-scale));
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.scan-stat .k {
+  font-size: calc(12px * var(--fs-scale));
+  color: var(--muted);
+}
+
+/* --- 变化列表 --- */
+
+.change-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.change-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--bg);
+}
+
+/*
+ * 可展开的那一条（简介变更）：点整条 = 展开/收起完整差异。
+ * 昵称变更、好友变更只有一行，没有可展开的内容，所以不加这个类。
+ */
+.change-item.expandable {
+  cursor: pointer;
+}
+
+.change-item.expandable:hover {
+  border-color: var(--accent);
+}
+
+.change-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+
+/*
+ * 好友名：做成按钮 —— 只有点它才打开右侧详情（点整条是展开/收起）。
+ * 按钮默认样式要全部清掉，否则字体会变成系统控件字体、还会有灰底。
+ */
+button.change-name {
+  font-weight: 600;
+  font-size: calc(13px * var(--fs-scale));
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+/*
+ * ⚠ 这里**必须把 background 也写出来**，不能只写 color。
+ *
+ *   全局的 `button:hover:not(:disabled) { background: var(--btn-bg-hover) }`
+ *   优先级是 (0,2,1)，高于 `button.change-name` 的 (0,1,1) ——
+ *   所以只写 color 的话，悬停时背景会被全局规则改成**主按钮的深蓝**，
+ *   而字体又是主题蓝，于是变成深蓝底 + 蓝字、糊成一团看不见。
+ *   （浅色模式 --btn-bg-hover 是 #1d4ed8 深蓝，深色模式是深灰蓝 ——
+ *    这正是"深色正常、浅色看不清"的原因。）
+ *
+ *   用 (0,3,1) 的选择器 + 同时指定背景和字体色，两个模式都稳定。
+ *   也不要加下划线（用户要求：只改背景和字体颜色）。
+ */
+button.change-name:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+button.change-name:disabled {
+  cursor: default;
+}
+
+/* 「展开 / 收起」提示：靠最右，不占正文宽度 */
+button.change-toggle {
+  margin-left: auto;
+  font-size: calc(11.5px * var(--fs-scale));
+  font-family: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 同样要显式写背景，理由见上面的警告 */
+button.change-toggle:hover:not(:disabled) {
+  color: var(--accent);
+  background: transparent;
+}
+
+/*
+ * 变化记录页：卡片撑满剩余高度，只有列表区域滚动 ——
+ * 「自动每页条数」需要一个稳定的参照高度，筛选条和分页条也要始终可见。
+ */
+.card.changes-card .changes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /*
+   * ⚠ 列表与标题之间的这段距离必须写成**容器的 padding**，不能写成
+   *   `.change-list` 的 margin-top。原因：自动每页条数是用
+   *   `容器 clientHeight − 容器的 padding` 算可用高度的 —— clientHeight 含 padding，
+   *   但不含子元素的 margin。margin 写在外面就等于**没被算进去**，
+   *   算出来的条数会多一条，于是凭空多出一个滚动条（用户报过）。
+   */
+  padding-top: 14px;
+  /* 内容贴边滚动会显得很挤 */
+  padding-right: 2px;
+}
+
+/* 已经在滚动容器里留了 padding，这里不要再加 margin */
+.card.changes-card .change-list {
+  margin-top: 0;
+}
+
+.change-field {
+  font-size: calc(11.5px * var(--fs-scale));
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.change-time {
+  font-size: calc(12px * var(--fs-scale));
+  color: var(--muted);
+}
+
+.before-after {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: text;
+}
+
+.ba-line {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  /*
+   * 刻意不用等宽字体：这里显示的是简介正文（散文），不是代码。
+   * 等宽栈还曾导致中文落到宋体，与界面其他部分不一致。
+   */
+  font-family: var(--font-ui);
+  font-size: calc(12px * var(--fs-scale));
+  line-height: 1.55;
+}
+
+.ba-tag {
+  flex: 0 0 34px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: calc(11.5px * var(--fs-scale));
+  /*
+   * ⚠ 这个上内边距必须和 .ba-text 的一致。
+   *   之前这里是 1px、.ba-text 是 5px，结果「旧/新」比正文高了一截 ——
+   *   用户报的就是这个问题。两处改动必须同步。
+   */
+  padding-top: 6px;
+}
+
+.ba-text {
+  flex: 1;
+  min-width: 0;
+  border-radius: 5px;
+  padding: 6px 8px;
+  color: var(--text);
+}
+
+/*
+ * 折叠态：新旧各只占**一行**，换行已在渲染时变成空格，超出的用省略号。
+ * 这样长简介不会再让一条记录占满整屏。
+ */
+.ba-text.one-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 段落级差异高亮（见 diff.ts 的说明）：
+ *   **整段**标红（删除）/ 标绿（新增），未变化的段落完全不着色。
+ *
+ * ⚠ 高亮必须包在**内层 inline span**（.hl）上，不能直接给块级 .para 加背景：
+ *   块级元素的背景会铺满整行到容器右边缘，看起来"整行连同后面的空白都标红了" ——
+ *   这是用户报的问题。inline 元素只覆盖到最后一个字符。
+ */
+.para {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hl {
+  border-radius: 3px;
+}
+
+.hl-del {
+  background: var(--diff-del-bg);
+  color: var(--diff-del-text);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.hl-add {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-text);
+}
+
+/* 已删除 .diff-stat 规则：差异改成段落级之后，
+   「−3 字 +12 字」这种按字符计数的提示已经没有意义了（用户要求去掉）。 */
+
+.empty-hint {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: calc(13px * var(--fs-scale));
+  text-align: center;
+}
+
+/* --- 主题切换 --- */
+
+.theme-switch {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.theme-switch button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 0;
+  padding: 4px 10px;
+  font-size: calc(12px * var(--fs-scale));
+}
+
+.theme-switch button:hover:not(:disabled) {
+  background: var(--ghost-hover);
+  color: var(--text);
+}
+
+.theme-switch button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- 好友表格 --- */
+
+
+.search-input {
+  flex: 0 1 240px;
+  min-width: 160px;
+}
+
+.table-scroll {
+  /* 未加 .fill-height 时（例如以后别处复用）给一个合理上限；
+     好友列表那张卡片会把它覆盖成「撑满剩余高度」 */
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.friends-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(13px * var(--fs-scale));
+  /*
+   * table-layout: fixed 是简介列能出现省略号的前提：
+   * auto 布局下单元格会为了容纳内容而撑宽，text-overflow: ellipsis 永远不生效。
+   * 固定布局下各列按声明的宽度分配，没写宽度的列（简介）吃掉剩余空间。
+   */
+  table-layout: fixed;
+}
+
+.friends-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
+  text-align: left;
+  font-weight: 600;
+  font-size: calc(12px * var(--fs-scale));
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.friends-table th:hover {
+  color: var(--accent);
+}
+
+.sort-mark {
+  margin-left: 4px;
+  font-size: calc(9px * var(--fs-scale));
+  color: var(--accent);
+}
+
+.friends-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.friends-table tbody tr:hover {
+  background: var(--ghost-hover);
+}
+
+.friends-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/*
+ * 关于序号列宽度的算术（13px 等宽数字约 7.3px/位）：
+ *   4 位数 ≈ 29px、单元格左右内边距各 10px → 需要约 49px。
+ *   取 54px（内容区 34px）让四位数有富余。
+ *   **五位数不再考虑**（用户明确说没必要）—— 真到了五位数，
+ *   它会被省略号截断，但那种规模已经超出这个工具的设计目标了。
+ */
+.col-seq {
+  width: calc(54px * var(--fs-scale));
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.col-name {
+  /* 很多好友昵称较长，给足宽度；剩下的都给简介 */
+  width: calc(170px * var(--fs-scale));
+  font-weight: 600;
+  /* 昵称也单行：整行高度一致 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.col-bio {
+  color: var(--muted);
+  /* 不设宽度：它会吃掉其余列之外的所有空间，窗口越宽显示越多 */
+  width: auto;
+  /*
+   * 简介**只显示一行**（用户要求）：这样每一行高度都一致，列表显得整齐。
+   * 完整内容在鼠标悬停的 title 提示里，点开右侧抽屉也能看全文。
+   */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.col-date {
+  width: calc(90px * var(--fs-scale));
+  color: var(--muted);
+  white-space: nowrap;
+  font-size: calc(12px * var(--fs-scale));
+}
+
+/* --- 分页 --- */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-size: calc(13px * var(--fs-scale));
+}
+
+.pagination-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.pagination-controls button {
+  padding: 4px 11px;
+  font-size: calc(12.5px * var(--fs-scale));
+}
+
+.page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.page-jump input {
+  width: 62px;
+}
+
+.inline-checkbox {
+  margin-bottom: 0;
+  gap: 4px;
+}
+
+.auto-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.page-size-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+/* 已删除 .tag-pending：那是为 WebSocket 广播新加的好友准备的标记，
+   广播功能已移除（见 main/index.ts 里的说明），这个类不再有人用。 */
+
+/*
+ * ⚠ 这里必须限定 input[type='number']。
+ *   早先写的是 `.page-size input`，结果**把复选框也变成了 74px 宽**，
+ *   「自动」被推到很右边，看起来像是勾选框和文字之间空了一大截 ——
+ *   用户报的就是这个。
+ */
+.page-size input[type='number'],
+.page-size-input {
+  width: 74px;
+}
+
+.font-name-input {
+  width: 240px;
+  max-width: 100%;
+}
+
+.font-status {
+  margin-left: 10px;
+  font-size: calc(12px * var(--fs-scale));
+}
+
+.font-status.ok {
+  color: var(--ok);
+}
+
+.font-status.missing {
+  color: var(--warn);
+}
+
+/* 字体输入框后面的短提示；长文本允许换行，但不要撑破行 */
+.font-hint-inline {
+  font-size: calc(12px * var(--fs-scale));
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- 风险提示卡片：内容要显眼，所以整块用警示色描边 --- */
+
+.card.risk-note {
+  border-color: var(--warn);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+}
+
+.card.risk-note h2 {
+  color: var(--warn-strong);
+}
+
+.card.risk-note p {
+  margin: 0 0 10px;
+}
+
+.card.risk-note p:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * 概览页的「上一轮扫描出问题了」横幅。
+ *
+ * 用**错误色**而不是警示色：风险提示是"你要知道有风险"（黄），
+ * 而这个是"已经出事了、这次数据不可信"（红），严重程度不同，颜色也不该一样。
+ */
+.card.warning-card {
+  border-color: var(--error);
+  border-left: 3px solid var(--error);
+  background: var(--error-soft, var(--warn-soft));
+}
+
+.card.warning-card h2 {
+  color: var(--error);
+}
+
+.row-removed .col-name,
+.row-removed .col-bio {
+  opacity: 0.6;
+}
+
+.tag-removed {
+  margin-left: 6px;
+  font-size: calc(10.5px * var(--fs-scale));
+  font-weight: 400;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* --- 变化记录的分类筛选 --- */
+
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* 现在筛选条跟在标题行里，不要再撑出额外下边距 */
+.card-head-tools .filter-row {
+  margin-bottom: 0;
+}
+
+button.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  padding: 4px 11px;
+  font-size: calc(12.5px * var(--fs-scale));
+}
+
+button.filter-chip:hover:not(:disabled) {
+  background: var(--ghost-hover);
+  color: var(--text);
+}
+
+button.filter-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chip-count {
+  font-size: calc(11px * var(--fs-scale));
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.change-field.relation {
+  background: var(--status-bg);
+  color: var(--muted);
+  border-color: var(--border-strong);
+}
+
+.relation-line {
+  margin: 0;
+  font-size: calc(13.5px * var(--fs-scale));
+  color: var(--text);
+}
+
+button.filter-chip.danger-chip {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+button.filter-chip.danger-chip:hover:not(:disabled) {
+  background: var(--diff-del-bg);
+  color: var(--error);
+}
+
+.friends-table th.sortable {
+  cursor: pointer;
+}
+
+.friends-table th:not(.sortable) {
+  cursor: default;
+}
+
+.friends-table th:not(.sortable):hover {
+  color: var(--muted);
+}

@@ -1,0 +1,94 @@
+# ============================================================================
+# electron-builder 打包配置
+#
+# 用法：
+#   npm run pack   # 只生成免安装目录（release\win-unpacked\），最快，用于自测
+#   npm run dist   # 生成安装程序 + 绿色版 zip
+#
+# ⚠ 关于安装位置（用户明确指定）：
+#   perMachine: true → 装到 C:\Program Files\VRCBioWatcher，所有用户可用，
+#   安装时**会弹一次 UAC**（这是"装到 Program Files"的必要代价）。
+#   它同时带来两个好处：
+#     1. 安装程序以管理员身份运行，能强制结束正在运行的应用
+#        （否则「关闭到托盘」会让它以为应用关不掉而反复报错）
+#     2. 自动跳过 electron-builder 的"安装模式选择页" ——
+#        NSIS 模板里 `!ifndef INSTALL_MODE_PER_ALL_USERS` 才插入那个页面，
+#        perMachine:true 会定义 INSTALL_MODE_PER_ALL_USERS，于是直接进入目录选择页
+#
+#   想要「装到用户目录、不要 UAC」就把 perMachine 改成 false。
+# ============================================================================
+
+appId: com.kobayashisouryuu.vrcbiowatcher
+# 产品名同时也是：exe 名、安装目录名、快捷方式名、控制面板里的名字。
+# ★ 特意不带空格 —— 带空格的路径在命令行/脚本里容易被引号问题坑到
+#   （这台机器上就出现过 NSIS 写 Uninstall 文件失败的报错）。
+productName: VRCBioWatcher
+
+directories:
+  output: release
+  buildResources: build
+
+# ★ 直接用 node_modules 里已经解压好的 Electron，不去 github.com 下载那个 150MB 的 zip。
+#
+#   两个好处：
+#     1. 打包不再依赖 GitHub 连通性（开发时 Electron 已经装好了，没必要再下一遍）
+#     2. 打包快很多
+#   代价：electron 的版本必须和 devDependencies 里的一致（本来也必须一致）。
+electronDist: node_modules/electron/dist
+
+# 只打包构建产物 —— electron-vite 已经把主进程、preload、界面编译到 out/ 下。
+# 源码、docs、scripts 都不需要进安装包。
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+
+# 本项目自己的 MIT 许可证要**随安装包一起分发**（MIT 的要求：分发副本时须附版权声明）。
+# 用 extraFiles 而不是 files：files 会被塞进 app.asar 内部（用户看不到），
+# extraFiles 直接放在 exe 旁边，一眼就能找到。
+# 注：Electron 自带的许可是 LICENSE.electron.txt 与 LICENSES.chromium.html，
+#     名字不冲突，会一起出现在安装目录里。
+extraFiles:
+  - LICENSE
+
+# 不生成 .blockmap / latest.yml 之类的自动更新元数据（我们用的是"检查版本号"方案）
+publish: null
+
+win:
+  # build/icon.ico 会被自动识别（多尺寸：16/24/32/48/64/128/256）
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  # 没有代码签名证书：Windows 会提示"未知发布者"，这是个人项目的正常情况。
+  # 不填 certificateFile，electron-builder 就跳过真正的签名步骤。
+  #
+  # ⚠ 这里**不要**写 artifactName：win 级的名字会同时套到 zip 上，
+  #   产出 `...-setup.zip` 这种怪名字。安装程序自己的名字写在 nsis 块里。
+
+nsis:
+  oneClick: false # 显示安装向导（用户能看到装到哪、能改目录）
+  perMachine: true # ★ 装到 Program Files，所有用户；会弹一次 UAC
+  allowElevation: true # 允许提权（perMachine 必需）
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: VRCBioWatcher
+  deleteAppDataOnUninstall: false # ★ 卸载不删数据（好友历史是用户资产）
+  # 安装程序的文件名（只影响 NSIS 这一个目标）
+  artifactName: ${productName}-${version}-setup.${ext}
+
+# 绿色版（zip）：解压后直接运行里面的 VRCBioWatcher.exe，不进注册表。
+#
+# 为什么不用 electron-builder 的 `portable` 目标：它是"自解压到 %TEMP% 再执行另一个 exe"，
+# 正是杀毒软件启发式判定的高危形态 —— 实测在这台机器上**双击毫无反应**
+# （进程、窗口一个都没有，也没有任何报错）。zip 就是普通压缩包，没有这个问题。
+#
+# ⚠ zip **没有**自己的配置块（写 `zip:` 会被 schema 拒绝，报 unknown property）。
+#   它的文件名由 ArchiveTarget 的默认规则决定：
+#     ${productName}-${version}-${os}.${ext}  →  VRCBioWatcher-1.0.0-win.zip
+#   想改名只能通过 win 级的 artifactName —— 但那会连安装程序一起改，所以保持默认。
+
