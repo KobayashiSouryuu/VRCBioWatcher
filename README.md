@@ -1,361 +1,204 @@
-# VRCBioWatcher
+# 测评和反馈
 
-> 定期抓取 VRChat 好友的**简介 / 昵称 / 简介链接**，记录每一次变化，并展示**段落级**的新旧差异。
+在我在GitHub上看到这个雷霆东西之后秉承赤石精神对这个东西的源码进行了品鉴，由于笔者比较怕死不敢拿真号去试VRChat的429，所以是用mock把VRChat服务器模拟了一遍然后拿作者的原版代码跑的，以下是笔者的一些品鉴体验。
 
-一个 Windows 桌面小工具。用 Electron + React + TypeScript 写的，数据全部保存在本地。
+首先进行一下省流：
 
-<p align="center">
-  <a href="#-风险提示请先读这一段">风险提示</a> ·
-  <a href="#为什么做这个">为什么做这个</a> ·
-  <a href="#功能">功能</a> ·
-  <a href="#工作原理">工作原理</a> ·
-  <a href="#安装与使用">安装与使用</a> ·
-  <a href="#常见问题">常见问题</a>
-</p>
+这是一个正宗老狗屎，堪比我声称我造了一台带[行车记录仪](https://zh.wikipedia.org/zh-hans/%E8%A1%8C%E8%BD%A6%E8%AE%B0%E5%BD%95%E4%BB%AA)的三轮车，然后这台三轮车号称装了自动刹车，结果三个轮子只有一个装了刹车片；车门号称上了锁，但这把锁只防隔壁车主，谁坐进驾驶座都能打开；车上的行车记录仪包装盒上写着"记录每一次变化"，实际上十个小时才拍一张照片，路上颠一下就关机睡十个小时，内存卡读不出来就直接格式化，换司机的时候还有概率把上一个司机的录像存进下一个司机的内存卡。集三轮车和行车记录仪之短，去其精华，取其糟粕。
 
----
+现在你很难放心地用这个东西记录任何人的简介变化，可能作者看到[VRCX](https://github.com/vrcx-team/VRCX)把"Feed Bio Changes"[判定为"不可修复"](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L56)之后觉得自己行了，然后在订阅了[Claude Max](https://claude.ai/new#settings/billing)或者别的什么Max之后直接开启了`/loop`开始[力大砖飞](https://addyosmani.com/blog/loop-engineering/)迭迭代代，最终成功制作出了这个雷霆大肥美狗屎。
 
-## ⚠ 风险提示（请先读这一段）
+## 然后我看到作者在[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86)里画了一张"工作原理"图，但是笔者认为绘制的不太准确，以下是笔者使用[Mermaid](https://mermaid.js.org/)™️在5[普朗克时间](https://zh.wikipedia.org/zh-hans/%E6%99%AE%E6%9C%97%E5%85%8B%E6%97%B6%E9%97%B4)内绘制的更加准确的429处理流程图
 
-**VRChat 从未公布 API 的限流（429）阈值**，社区也没有可靠的实测数据。
-官方 FAQ 的原文意思是：429 无法预测；**不要发送重复的、不计量的请求**；
-**无视 429 可能导致更长的限流，甚至账号封停**。
+<details>
+<summary>点击观赏</summary>
 
-本工具是按「尽量温和」设计的：
-
-- 每个好友之间**固定间隔 3 秒**，匀速、不分批（突发请求正是限流器最容易打爆的形态）
-- **一见 429 立刻中断整轮扫描**，不重试、不跳过，并进入 **10 小时**强制冷却
-- 自动扫描每 **10 小时**一次；手动扫描最快每 **2 小时**一次
-
-**但即便如此，如果触发了限流，则存在账号被临时限制甚至封停的风险。但作者本人用作者自己的账号测试目前没有出现过限流问题。** 请自行判断是否使用。
-
-> **如果你在使用中触发了 429**，请到 [GitHub Issues](https://github.com/KobayashiSouryuu/VRCBioWatcher/issues)
-> 反馈情况，并**建议暂时停止使用** —— 那说明当前的请求节奏对你的账号来说偏快。
-
-**另外：不要把你的数据目录或 `session.bin` 分享给任何人** —— 那里面等于你的登录态。
-
-**安装或解压时，Windows 可能会拦一下，说「Windows 已保护你的电脑」或者「不建议运行」** ——
-这不是因为程序有问题，而是因为**作者没有购买代码签名证书**（那要每年向微软认可的证书机构
-交一笔钱，个人免费项目不划算），所以 Windows 无法验证"这个文件是谁发布的"，
-对一切未签名的下载文件它都这么提示。它提示的是「**未知发布者**」，不是「检测到病毒」。
-
-- **安装包**：点「更多信息 → 仍要运行」即可
-- **zip 绿色版**：点「确定」即可
-
-> 这个项目是完全开源的，你可以自行审阅源码、自行构建（见下面的「从源码运行」），
-> 不需要相信作者的二进制文件。
-
----
-
-## 为什么做这个
-
-VRC 在 **API v1.21.0** 里把 `bio` / `bioLinks` 从 **WebSocket 推送**中移除了
-（官方维护者原话：*"Bio was removed from the websocket, and thus, are no longer able to
-detect bio changes."*）。
-
-**VRCX 因此把「Feed Bio Changes」判定为「不可修复」并放弃了这个功能。**
-同时 bio 也从 `/users/` 移到了 `/profile/`，不能再按 bio 搜索用户。
-
-这个工具就是来补这个缺口的：**既然推送里没有简介，那就定期轮询 `/profile/`，把每次结果留档并对比。**
-
-| | VRCX | 本工具 |
-|---|---|---|
-| 好友管理 / 动态 / 世界信息 | ✅ 功能齐全 | ❌ 不做 |
-| 好友简介变化 | ❌ 判定不可修复 | ✅ **专注做这一件事** |
-| 加/删好友、改昵称 | ✅ **实时**（WebSocket 广播） | ⚠️ 靠定期扫描发现（见下） |
-
----
-
-## 功能
-
-- **好友列表**：序号（VRChat 的好友顺序）、昵称、简介、最近变化；可排序、搜索、分页
-- **变化记录**：按时间倒序，可按「昵称变更 / 简介变更 / 好友变更」筛选
-- **段落级差异**：整段标红（旧）/ 标绿（新），未变化的段落不着色
-- **好友详情抽屉**：当前简介全文 + 最近 5 次变化历史
-- **定时扫描**：每 10 小时一次（从扫描**完成**时刻计时），首次使用必须先手动扫描一次才会自动开启定时扫描功能，非首次使用打开软件时若已超过 10 小时则会直接自动扫描
-- **加/删好友检测**：由扫描比对好友名单得出
-- **系统托盘**：关窗口收进托盘继续后台运行；可选「关闭即退出」
-- **多语言**：中文 / 日本語 / English，首次运行按系统语言自动选择
-- **账号隔离**：每个账号一份独立数据；退出登录后界面上不显示任何数据
-- **数据目录可迁移**：不喜欢放 C 盘可以改，迁移带校验（复制 → 校验 → 才删旧）
-- **可选加密**：开启后用 Windows DPAPI 加密本地数据
-- **诊断与反馈**：一键生成含最近日志的诊断信息，用来提 issue
-
-## 工作原理
-
-```
-登录（账号密码 → auth cookie，密码不落盘）
-        │
-        ▼
-每 10 小时一轮扫描（可手动触发，最快 2 小时一次）
-        │
-        ├─ GET /auth/user            → 好友名单 + 在线/活跃/离线分类
-        ├─ GET /auth/user/friends?offline=true → 离线好友的最近活跃时间（用于排序）
-        └─ 逐个 GET /profile/{id}     → 昵称 / 简介 / 简介链接
-                  ↑ 每个好友之间固定间隔 3 秒
-        │
-        ▼
-与上次结果比对 → 有变化就写一条事件 → 界面上按段落展示差异
+```mermaid
+flowchart TD
+    A["开始扫描"] --> B["GET /auth/user<br/>拿好友名单"]
+    B -->|429| C["本轮结束<br/>冷却？什么冷却<br/>你现在就可以手动再点一次"]
+    B -->|200| D["GET /auth/user/friends?offline=true<br/>拿最近在线时间，只用来排序"]
+    D -->|429| E["底层：交由上层中断并进入冷却"]
+    E --> F["上层：好的，那就不排序了"]
+    F --> G["日志：限流冷却：正常"]
+    G --> H
+    D -->|200| H["逐个 GET /profile/好友ID<br/>每 3 秒一个"]
+    H -->|200，下一个| H
+    H -->|429| I["中断本轮 + 冷却 10 小时 ✅<br/>全车唯一的刹车片"]
 ```
 
-**扫描顺序**：先扫正在线/活跃的好友（最可能刚改过资料），再扫离线好友（按最近活跃排序）。
+</details>
 
-**首次扫描只建立基线，不产生任何变化记录** —— 否则第一轮会塞进几百条噪音。
+## 正文
 
-### ⚠ 关于时间：显示的是「扫描时间」
+首先这个项目的[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L3)第一句就写着"定期抓取 VRChat 好友的简介 / 昵称 / 简介链接，记录每一次变化"，然后你往下翻才知道它是[每十个小时扫一次](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L28)，也就是说你的好友只要在这十个小时里把简介从A改成B再改回A，这个东西就会非常淡定地告诉你"没有发现变化（这是常态）"。虽然本项目叫BioWatcher听起来像是[守望先锋](https://zh.wikipedia.org/zh-hans/%E5%AE%88%E6%9C%9B%E5%85%88%E9%94%8B)一样全天候守望你好友的简介，但是实际上它十个小时才睁一次眼，所以笔者认为"记录每一次变化"这句话就像[神圣罗马帝国](https://zh.wikipedia.org/zh-hans/%E7%A5%9E%E5%9C%A3%E7%BD%97%E9%A9%AC%E5%B8%9D%E5%9B%BD)一样，既不是每一次，也不全是变化（下面你会看到它凭空造出来的变化），记录也不一定留得住（下面你也会看到它是怎么失忆的）。
 
-因为简介只能靠**轮询**发现，界面上每条记录的时间是**发现它的那次扫描的时间**，
-**不是对方修改简介的时间** —— 最多可能相差一个扫描周期（默认 10 小时）。界面上已明确标注。
+然后是本项目最引以为傲的防封号系统，[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L27)里加粗写着"**一见 429 立刻中断整轮扫描**，不重试、不跳过，并进入 **10 小时**强制冷却"，前面还附赠了一大段风险提示说无视429可能会被限流甚至封号，代码注释里的⚠和★多到笔者一度以为作者在写核电站操作规程。（科普一下，429就是VRChat服务器在说"你请求太频繁了给我歇会儿"。）
 
----
-
-## 安装与使用
-
-### 环境要求
-
-- Windows 10 / 11
-- [Node.js](https://nodejs.org/) 20.19+ 或 22.12+（仅从源码运行需要）
-
-### 从源码运行
-
-```bash
-git clone https://github.com/KobayashiSouryuu/VRCBioWatcher.git
-cd VRCBioWatcher
-npm install
-npm run dev
-```
-
-> **受限环境（例如工作区目录有特殊 ACL、或 npm 缓存不能写到用户目录）**：
-> 仓库里提供了两个 PowerShell 辅助脚本：
-> `powershell -ExecutionPolicy Bypass -File scripts\install-deps.ps1`（安装依赖，含缓存与
-> Electron 二进制校验/修复）与 `powershell -ExecutionPolicy Bypass -File scripts\dev.ps1`（启动）。
-> 这两个脚本只做环境适配，不做别的事。
-
-### 打包成 Windows 程序
-
-```bash
-npm run pack   # 只生成免安装目录 → release\win-unpacked\（最快，自测用）
-npm run dist   # 安装程序 + 绿色版 zip → release\
-```
-> 网络访问 GitHub 有困难的话（比如中国大陆）请改用 `scripts\dist.ps1`
-
-产物：
-
-| 文件 | 说明 |
-|---|---|
-| `VRCBioWatcher-<版本号>-setup.exe` | NSIS 安装程序。装到 `C:\Program Files\VRCBioWatcher`，**安装时会弹一次 UAC**（装到 Program Files 的必要代价）。卸载时**不会删除你的数据** |
-| `VRCBioWatcher-<版本号>-win.zip` | 绿色版：**解压到一个空文件夹**，运行里面的 `VRCBioWatcher.exe`。不进注册表、不需要管理员 |
-
-> 想改成「装到用户目录、不要 UAC」：把 `electron-builder.yml` 里的 `perMachine` 改成 `false`。
-> 那样会多出一个「安装模式选择页」，且安装程序无法强制结束正在运行的应用（见下面的提示）。
-
-**安装前请先从托盘退出正在运行的实例。** 本程序默认「关窗口 = 收进托盘继续运行」，
-所以安装程序发来的关闭请求会被它拦下；之后安装程序会尝试强杀进程，
-而**非管理员**的安装程序杀不掉它 —— 表现为反复提示「应用无法关闭」，
-接着因为文件被占用而写入失败。用 `perMachine: true`（默认配置）时安装程序是管理员，
-可以强杀，这个问题基本不会出现。也可以直接命令行优雅退出：
-
-```powershell
-& "C:\Program Files\VRCBioWatcher\VRCBioWatcher.exe" --quit
-```
-
-**关于打包环境的三件事**（都写在 `scripts/dist.ps1` 的注释里）：
-
-1. **Electron 本体不会被重新下载** —— `electron-builder.yml` 里的 `electronDist` 直接指向
-   `node_modules/electron/dist`（开发时已经装好了），所以打包快且不依赖 GitHub。
-2. **NSIS 工具链仍要从 GitHub Releases 下载**。如果 `github.com` 不可达，
-   `scripts/dist.ps1` 会自动改用 npmmirror 镜像，并把打包缓存与临时目录固定在项目内：
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts\dist.ps1
-   ```
-3. **NSIS 需要可写的 TEMP**。在某些沙箱终端里 `TEMP` 指向一个 makensis 写不进去的目录，
-   会报 `!tempfile: Unable to create temporary file!`。脚本会把 `TMP`/`TEMP` 指到项目内解决。
-
-**图标**：`build/icon.png`（512×512 源图）与 `build/icon.ico`（多尺寸 16–256，electron-builder 使用）。
-托盘与窗口图标是内嵌的 base64 PNG（见 `src/main/app-icon.ts`），换图标时两处都要更新。
-
-**没有代码签名**：所以 Windows 会提示「未知发布者 / 不建议安装」（SmartScreen）。
-个人项目买签名证书不划算，这是正常情况。处理方式很简单 —— **放行一次就行，之后不会再问**：
-
-- **安装包**：点「更多信息 → 仍要运行」
-- **zip 绿色版**：双击或右键打开时 Windows 同样会问一次（提示来自"打开这些文件可能对你的计算机有害"），
-  **点「确定」放行即可**，后续解压和运行都不会再有提示
-  ⚠ 唯一的坑：zip 里的文件**直接躺在压缩包根目录**（没有外层文件夹），
-  所以**先新建一个空文件夹再解压进去**，否则 70 多个文件会散落到下载目录里
-- 如果安装反复失败，可能是 **Windows Defender 的实时保护锁住了刚写入的文件**
-  （典型现象：提示写 `Uninstall ...exe` 失败）。可以先临时关闭实时保护、或重启后再装
-
-> 想彻底消除警告只能买代码签名证书（或使用微软的 Azure Trusted Signing）。
-
-> ⚠ **打包版和开发版共用同一份数据**（`%APPDATA%\vrcbw`，由主进程显式固定）。
-> 所以装完之后不需要迁移数据，打开就是原来那些好友和变化记录。
-
-### 首次使用
-
-1. 启动后是**登录页**：填 VRChat 用户名（或邮箱）+ 密码
-2. 如果账号启用了两步验证，会要求输入 6 位验证码（支持认证器 / 邮箱验证码 / 恢复码）
-3. 登录后点「**开始第一次扫描**」建立基线 —— 耗时举例：200 个好友约需 **10 分钟**
-   > **注意：第一次扫描必须手动点**。程序不会在全新账号上自动扫描 ——
-   > 这是有意的：让你先读完限流风险与扫描节奏，再自己决定什么时候开始。
-4. 之后每 10 小时自动扫描一次；也可以手动点「立即扫描」（最快 2 小时一次）
-
----
-
-## 数据与隐私
-
-**所有数据都保存在本机，程序不上传任何东西。**
+然而令人蒙古的是，一轮扫描一共要请求三个接口：拿好友名单的`/auth/user`、拿离线好友最近在线时间的`/auth/user/friends?offline=true`（这个只用来排序）、以及逐个拿好友简介的`/profile/{id}`，而这个号称一见429就停的系统，只有[第三个接口](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L545-L583)吃到429才会停下来冷却。[第一个接口](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L342-L354)吃到429本轮倒是结束了，但是不进冷却，你现在立刻马上就可以手动再点一次扫描；[第二个接口](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L466-L469)吃到429居然他妈的接着扫，日志里还会出现这么一段非常感人的上下级对话：
 
 ```
-%APPDATA%\vrcbw\
-├─ settings.json          界面设置（主题、语言、字号、每页条数…）
-├─ session.bin            会话凭据（Windows DPAPI 密文，与当前账户绑定）
-└─ data\
-   └─ <你的账号 id>\
-      └─ store.json       该账号的全部数据（好友资料 + 变化事件）
+[vrchat] 触发限流（429）—— 按策略不再重试，交由上层中断并进入冷却
+[scan] 获取离线好友列表失败，将不按活跃时间排序： HTTP 429
+
+──────────────────────────────────────────────
+【扫描开始】
+  账号：笔者的小号 (usr_me)
+  好友总数：246（在线/活跃 12 / 离线 234 / 兜底 0）
+  请求间隔：3 秒/人
+  预计耗时：约 14 分钟
+  触发方式：手动
+  限流冷却：正常
+  首次扫描：否
+──────────────────────────────────────────────
 ```
 
-- **密码从不写入磁盘**：只在登录时用一次，之后只保存会话凭据
-- **账号隔离**：每个账号一个子目录；退出登录后界面上不显示任何数据
-- **数据目录可更改**（设置 → 数据），迁移时先完整复制再校验（文件数 + 字节数一致），
-  **校验通过才删除旧目录**
-- **可选加密**：设置 → 数据 → 加密本地数据（DPAPI）。默认关闭，因为简介属于半公开数据，
-  保持明文便于你自己检查与备份；开启后数据与当前 Windows 账户绑定，换机器就解不开
+> 请注意这个"限流冷却：正常"是在刚吃完一个429之后打印的
 
----
+![belike](assets/image1.png)
 
-## 常见问题
+底层喊"交由上层中断并进入冷却"，上层回"好的那就不排序了"，然后扭头就去请求好友资料了，这个上下级沟通效率堪比[传话游戏](https://zh.wikipedia.org/zh-hans/%E4%BC%A0%E8%AF%9D%E6%B8%B8%E6%88%8F)。真正的刹车要等下一个资料请求再吃一次429才会踩下去，所以你把冷却时间写成十个小时还是五个[地质年代](https://zh.wikipedia.org/zh-hans/%E5%9C%B0%E8%B4%A8%E5%B9%B4%E4%BB%A3)都没用，因为有两个429根本走不到那行代码。顺带一提`client.ts`[开头的注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L11-L13)写的是"429 时按 Retry-After 退避重试"，往下翻二十来行[又写](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L29-L41)"遇到 429 **不自动重试**"，同一个文件里注释自己跟自己汴京。而这一整套防护系统的有效性证明，是[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L30)里的一句"作者本人用作者自己的账号测试目前没有出现过限流问题"，属于是样本量为1的[临床试验](https://zh.wikipedia.org/zh-hans/%E4%B8%B4%E5%BA%8A%E8%AF%95%E9%AA%8C)。
 
-**Q：会被封号吗？**
-A：**无法保证不会。** VRChat 从未公布限流阈值，所以任何人都算不出"安全速率"。
-本工具的做法是保守 + 一见限流就停，但风险不可能为零。而且即使遇到限流，也并不代表一定会被封号。
-详见上面的风险提示。
+笔者在群里品鉴这段代码的时候，有群友看到"429不重试"之后当场想出了一个反制方法：只要一直改bio，每次加一个字或者删一个字，把它打到429，就可以放心改了。笔者翻了一下代码，很遗憾这个方法行不通，因为请求数只跟好友数有关，它十个小时才看你一眼，你改一万次它也只请求你一次。好消息是根本不需要反制，只要在两次扫描之间改完再改回来，它就什么都看不见（见开头那段）。不过群友的另一个担心倒是有道理：一轮扫描的请求数就等于好友数，246个好友就是246次请求、连续敲门十几分钟，[DECISIONS.md](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/docs/DECISIONS.md?plain=1#L312)里也写着"好友越多耗时越久是刻意的（为避免 429）"，按作者自己的逻辑，好友越多越危险。一个记录好友简介的软件，最怕的是你好友多，那么这个项目就失去意义了。
 
-**Q：为什么扫一轮要十几分钟？**
-A：故意的。每个好友间隔 3 秒，好友越多越久。突发请求是限流器最容易打爆的形态，
-所以这里选择匀速。界面上会显示预估耗时。
-作者判断即使间隔 1 秒扫描一次，也不会出现限流情况，毕竟不是突发 1 秒内请求几十次，但这只是作者个人猜测，为了防止出现问题，仍然采用最保守的请求方法。
+接下来笔者在观赏[使用管作者叫"用户"并且会跟"你"确认参数的大语言模型生成式预训练转换器编写的神秘代码](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L397-L417)时，发现了一段非常严谨的注释。作者为了防止服务器抽风返回一份残缺的好友名单、一下子造出几百条假的"已删除好友"，专门设计了一个[交叉验证](https://zh.wikipedia.org/zh-hans/%E4%BA%A4%E5%8F%89%E9%AA%8C%E8%AF%81)，
 
-**Q：为什么变化的时间不是对方修改的时间？**
-A：因为简介不在 WebSocket 推送里，只能靠定期轮询发现。显示的是**扫描时间**。
+![交叉验证](assets/image2.png)
 
-**Q：VRCX 上能看到好友实时改名/加好友，这里为什么不行？**
-A：VRCX 用 WebSocket 广播，本工具没有接入。
-这里的关系变化也是靠扫描比对发现的，所以会延迟最多一个扫描周期。
+注释原文是"离线列表来自**另一个 HTTP 请求**（/auth/user/friends?offline=true），所以这是真正独立的证据，不是同一个响应自证"。笔者看到这里肃然起敬，然后往下看了几行代码就笑出了声：拿来做验证的那个离线列表[根本就是从第一个`/auth/user`响应里取的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L363-L365)，跟被验证的好友名单是同一个响应，而注释里说的那个"另一个 HTTP 请求"要等删除判定做完以后[才发出去](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L466)，结果还只拿去排序。也就是说这段代码完美地执行了注释里专门声明"不是"的那件事：同一个响应自证，属于是代码界的[循环论证](https://zh.wikipedia.org/zh-hans/%E5%BE%AA%E7%8E%AF%E8%AE%BA%E8%AF%81)。这就好比法官宣布本案必须要有独立证人，然后让被告给自己作证，判完了才把证人请进来，安排证人去排座位。笔者用mock让那个独立接口明确返回了好友B，程序照样先把B判成了已删除。
 
-**Q：能看非好友的简介吗？**
-A：不能。只扫描你的好友。
+同一个检查里还有第二条规则：好友数比上次少了超过3个、并且少了超过30%，就认为名单不可信，跳过本轮的删除判定，[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L409-L417)里还非常贴心地举了个例子，说这条规则是为了照顾好友本来就少的人，"10 个好友删 4 个不该被判成异常"。笔者使用[小学](https://zh.wikipedia.org/zh-hans/%E5%B0%8F%E5%AD%A6)数学
 
-**Q：数据放在 C 盘可以改吗？**
-A：可以。设置 → 数据 → 更改数据位置。（设置文件和会话凭据会留在 `%APPDATA%`，
-因为它们必须待在固定位置，否则程序无法"找到"你设置的数据目录。）
+![小学数学](assets/image3.png)
 
----
-
-## 项目结构
+进行了计算：少了4个，4>3；少了40%，40%>30%，两条全中，**判定为异常**，注释里举的正面例子被紧挨着的代码当场判成了反面例子：
 
 ```
-src/
-├─ main/                     Electron 主进程（只有它能联网和读写文件）
-│  ├─ index.ts               窗口、托盘、IPC、调度器、诊断
-│  ├─ watcher.ts             扫描器（节奏、比对、变更事件）
-│  ├─ settings.ts            设置持久化
-│  ├─ log-buffer.ts          日志环形缓冲（反馈时附上）
-│  ├─ store/db.ts            数据存储（按账号隔离、可迁移、可选加密）
-│  └─ vrchat/                VRChat API 客户端、认证、会话存储
-├─ preload/                  contextBridge 白名单（界面只能调这里列出的方法）
-├─ renderer/                 React 界面
-│  └─ src/
-│     ├─ i18n.tsx            中/日/英三语文案（漏翻一条就是编译错误）
-│     ├─ diff.ts             段落级差异算法
-│     └─ components/ pages/  界面组件
-└─ shared/                   主进程与界面共用的类型与常量
-docs/DECISIONS.md            设计决策与实测记录（含所有踩过的坑）
+[scan] ⚠ 名单可信度检查未通过（子列表多出 0 个 id，数量变化 -4），已跳过本轮的「解除好友」判定，避免造出假记录
 ```
 
-### 安全基线（不要放宽）
+> 请注意这就是注释里说"不该被判成异常"的那种情况
 
-`contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`、
-按模式注入的 CSP、preload 的 `contextBridge` 白名单、单实例锁。
+更精彩的是跳过以后本地记录不会更新，下一轮还是拿本地的10个人去跟服务器上的6个人比，继续异常，只要你的好友数不变它就每一轮都跳过，那4个人会在这个软件里永远处于删了又没删的[薛定谔](https://zh.wikipedia.org/zh-hans/%E8%96%9B%E5%AE%9A%E8%B0%94%E7%8C%AB)状态，界面上还会每轮提示你"[拿到的好友名单自相矛盾](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/renderer/src/i18n.tsx#L382-L383)"，笔者看了半天，真正自相矛盾的明明是注释和它下面那行代码。笔者还实测出了解锁方法：**再去加1个好友**，这时候只少了3个，不满足"超过3个"，检查通过，那4个人才终于被标记成已删除。想让这个软件承认你删了4个人，你得先去交1个新朋友，笔者合理怀疑这是一款伪装成好友简介记录工具的[社交恐惧症](https://zh.wikipedia.org/zh-hans/%E7%A4%BE%E4%BA%A4%E6%81%90%E6%83%A7%E7%97%87)康复训练软件。
 
-### 开发命令
+然后第一次扫描的设计也很有意思，[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L103)里说"首次扫描只建立基线，不产生任何变化记录 —— 否则第一轮会塞进几百条噪音"，基线就是第一次扫描记下的初始状态，这个设计本身很合理。然而令人蒙古的是，程序判断"是不是第一次扫描"的依据是`lastScanAt`（上次扫描时间）[是不是空的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L389-L392)，而你[点了停止](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L508-L511)、被429限流、登录过期、连续失败十次（比如断网），这四种中途退出全都会写入`lastScanAt`。所以第一次扫描只要没扫完，下一轮就不算第一次了，上次没扫到的老朋友这轮才第一次出现，[全部会被记成"新好友"](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L700-L702)。笔者拿246个好友的号模拟了一下，第一次扫到第50个的时候点了停止，界面告诉我"[已按你的要求停止（已检查 50/246）。已完成的进度已保存。](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/renderer/src/i18n.tsx#L363)"，然后下一轮扫描：
 
-```bash
-npm run dev         # 开发模式（含热更新）
-npm run typecheck   # 主进程 + 界面类型检查
-npm run build       # 类型检查 + 构建
+```
+──────────────────────────────────────────────
+【扫描结束】
+  结果：正常完成
+  检查：246 / 246
+  跳过：0（403 私密资料 0 / 404 已注销或已解除 0 / 请求失败 0）
+  发现变化：196（加好友 196）
+  耗时：0 秒
+  下次自动扫描：2026-10-06T21:03:43.752Z
+──────────────────────────────────────────────
 ```
 
----
+> 请注意这196个人上一轮就已经是好友了。至于耗时0秒，是因为笔者用的mock，建议作者也接入mock，这样就再也不会触发429了
 
-## 法律声明
+要是笔者用真号大半夜看到196条新好友记录，估计会以为自己被盗号了然后连夜改密码，README说要避免的"几百条噪音"一条都没少。究其原因是`lastScanAt`一个字段打两份工，既当"下次什么时候扫"的计时起点又当"基线建好了没有"的标志，比[996](https://zh.wikipedia.org/zh-hans/996%E5%B7%A5%E4%BD%9C%E5%88%B6)还卷。而且v1.1.0新写的DECISIONS.md里还专门画了张表，说`lastScanAt`"[只在整轮跑完时写](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/docs/DECISIONS.md?plain=1#L1121)"，笔者建议作者画表之前先看一眼自己的代码。
 
-© 2026 KobayashiSouryuu
+这个软件处理数据损坏的方式也是非常的诡异，数据文件读不出来的时候（JSON坏了或者加密文件解不开），它会在日志里小声嘀咕一句然后[直接当成空数据](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/store/db.ts#L464-L483)，界面上没有任何提示，看起来就跟你第一次用一样。于是你很自然地点了"扫描"，而扫描做的第一件事，是在发出任何网络请求之前[先存一次盘](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L319-L337)，坏掉的文件就这么被空数据覆盖了。笔者做了一个35KB、存了300条变化记录的数据文件，只把结尾的一个`}`删了，然后让所有网络请求都返回503：
 
-VRCBioWatcher 是一个用于查看 VRChat 好友资料（简介、昵称、简介链接）变化的辅助应用。
-本程序使用了非官方的 VRChat API (VRCSDK)。
+```
+[data] 数据文件损坏，将当作空数据： Expected ',' or '}' after property value in JSON at position 31628 (line 1822 column 4)
+```
 
-VRCBioWatcher 不受 VRChat 的认可，也不反映 VRChat 或者任何正式参与制作或管理 VRChat
-的人员/团体的观点或意见。VRChat 是 VRChat Inc. 的商标。VRChat © VRChat Inc.
+扫描前35228字节、300条记录，扫描后368字节、0个好友、0条记录。
 
-VRChat 从未公布 API 的限流（429）阈值。触发限流有概率导致账号被临时限制甚至封停，本程序按保守节奏设计，作者自测期间没有出现过限流（429）的情况，但并不能保证一定不会出现，请自行判断是否使用本工具。
+> 请注意这一轮扫描连一个网络请求都没成功
 
-KobayashiSouryuu 及本项目的全体贡献者，均不对使用 VRCBioWatcher 引起的任何问题负责。
-使用时请自负风险！
+一个专门负责保存历史的软件，发现历史受损的处理方式是先完成[失忆](https://zh.wikipedia.org/zh-hans/%E5%A4%B1%E5%BF%86%E7%97%87)，记忆力堪比[金鱼](https://zh.wikipedia.org/zh-hans/%E9%87%91%E9%B1%BC)，少一个括号、手动补上就能救回来的数据被它亲手清空了，[原子](https://zh.wikipedia.org/zh-hans/%E5%8E%9F%E5%AD%90)写入倒是做得非常认真，保证清空的时候一个字节都不会写错。
 
-## 开源许可
+数据加密还有一个非常适合表演魔术的组合技。[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L80)说"不喜欢放 C 盘可以改，迁移带校验（复制 → 校验 → 才删旧）"，然而删旧目录那一步的[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/store/db.ts#L393-L397)写的是"**目标**与默认位置相同时不删"，代码判断的却是"**源目录**是默认位置时不删"，而默认位置就在C盘，所以最常见的用法，也就是从默认位置搬去D盘，旧数据永远不删，嫌C盘占地方搬去D盘结果C盘D盘各一份，两份数据形成了[量子纠缠](https://zh.wikipedia.org/zh-hans/%E9%87%8F%E5%AD%90%E7%BA%A0%E7%BC%A0)。这时候你再打开"加密本地数据"，程序只加密D盘那份，C盘那份明文继续安详地躺着。最搞笑的是作者自己在加密开关的[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/index.ts#L790-L795)里写着，用户点了开关会以为"已经加密了"，"**不能有这种错觉**"，存储代码的[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/store/db.ts#L503-L504)写得更直白："开了加密却还留着明文副本，**等于没加密**"，按作者自己的标准这就是没加密。[保险箱](https://zh.wikipedia.org/zh-hans/%E4%BF%9D%E9%99%A9%E7%AE%B1)买好了密码也设了，[复印件](https://zh.wikipedia.org/zh-hans/%E5%A4%8D%E5%8D%B0%E6%9C%BA)还在桌上摆着。
 
-本项目使用以下开源软件，在此致谢：
+说到加密，会话凭据（也就是你的VRChat登录状态）的加密也值得品鉴一下。登录成功以后软件会告诉你"[会话已用系统加密保存，下次启动不必重新登录](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/auth.ts#L211)"，然后[session-store.ts](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/session-store.ts#L41-L44)里有这么一段一万个猎奇写法大全级别的代码：
 
-| 项目 | 许可 |
-|---|---|
-| [Electron](https://github.com/electron/electron) | MIT License |
-| [React](https://github.com/facebook/react) / React DOM | MIT License |
-| [Vite](https://github.com/vitejs/vite) / [electron-vite](https://github.com/alex8088/electron-vite) | MIT License |
-| [TypeScript](https://github.com/microsoft/TypeScript) | Apache License 2.0 |
-| Chromium（随 Electron 一并分发） | BSD-3-Clause |
-| Node.js（随 Electron 一并分发） | MIT License |
+```ts
+export function saveSession(session: StoredSession): void {
+  if (!isSecureStorageAvailable()) {
+    throw new Error('系统加密不可用，拒绝以明文保存会话凭据（请重新登录）')
+  }
+```
 
-Chromium 与 Node.js 内部还包含**数百个第三方组件**，各有其自己的许可。
-**这些许可的完整文本会随安装包一起分发**，都在安装目录下：
+那么问题来了，`safeStorage`是他妈从Electron导入的，在Windows上什么时候会不可用？Electron[文档](https://www.electronjs.org/docs/latest/api/safe-storage)原话是"On Windows, returns true once the app has emitted the `ready` event"，也就是软件启动完它就恒为true；这个项目用的Electron 44[最低要求Windows 10](https://github.com/electron/electron/blob/main/README.md)；而DPAPI这个东西从[Windows 2000](https://zh.wikipedia.org/zh-hans/Windows_2000)就有了。所以笔者推测，作者写这段防御代码的时候，使用的操作系统疑似是下图这个：
 
-| 文件 | 内容 |
-|---|---|
-| `LICENSE` | 本项目自身（MIT） |
-| `LICENSE.electron.txt` | Electron 与 Node.js |
-| `LICENSES.chromium.html` | Chromium 内全部第三方组件（约 20MB） |
+![操作系统](assets/44c05f06a750d10bc7c897e5e1228e4d.png)
 
-本项目自身以 **MIT** 许可发布，完整文本见 [LICENSE](LICENSE)。
+> 疑似作者的开发环境
 
-## 贡献与反馈
+![开发环境1](assets/7826b40dbfbf182e19236e2c5c07c65f.png)
 
-- **Bug / 功能建议**：欢迎提 [Issue](https://github.com/KobayashiSouryuu/VRCBioWatcher/issues)
-- **提 issue 时请附上诊断信息**：程序里「关于 → 提交反馈」可以一键生成
-  （包含环境信息与最近日志，**发送前你可以看到并编辑全部内容**）
-- **设计决策记录**：`docs/DECISIONS.md` 里有所有关键取舍与实测数据 ——
-  包括 VRChat API 的各种坑、为什么某些参数是现在这个值。想改参数前建议先读它
+![开发环境2](assets/6b27b337fe287e47a8a4ca598fae8f26.png)
 
-## AI 协助声明
+![开发环境3](assets/92cecbb077a4bb3c98b67ce34197616a.png)
 
-本项目的代码在 AI 助手（DeepSeek）的协助下开发，设计决策与测试由作者本人把关。**署名与版权归人类作者所有。**
+> 然而作者自己在[DECISIONS.md](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/docs/DECISIONS.md?plain=1#L953-L956)里贴的实测User-Agent写着`Windows NT 10.0`（XP是NT 5.1），同一张表里还加粗写着"`safeStorage` 可用 ✅ true"，[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/session-store.ts#L13-L15)里也写着"实测本机 `safeStorage.isEncryptionAvailable()` 为 true"，实测完了是true，代码里还是要防一手false
 
----
+当然防一手false只是猎奇，这个加密本身的问题更有意思。Electron[文档](https://www.electronjs.org/docs/latest/api/safe-storage)里写得很清楚，Windows上的safeStorage用的是DPAPI，加密的内容"protected from other users on the same machine, but not from other apps running in the same userspace"，翻译成人话就是：防得住同一台电脑上的其他Windows用户，防不住你自己账户下跑的任何程序。然而[读我.妈的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/README.md?plain=1#L35)里郑重提醒你"不要把你的数据目录或 `session.bin` 分享给任何人 —— 那里面等于你的登录态"，笔者看完陷入了沉思：你把session.bin发给别人，别人在自己电脑上是解不开的，这恰好是DPAPI防得住的那种情况；真正能解开它的，是你自己电脑上随便哪个以你身份运行的程序，比如你从某个群里下载的"VRChat免费模型提取器.exe"。
 
-## English Summary
+![疑似免费模型提取器](assets/image5.png)
 
-**VRCBioWatcher** is a Windows desktop tool that periodically fetches your VRChat
-friends' bios, names and bio links, records every change, and shows a **paragraph-level**
-diff between the old and new versions.
+门锁防得住隔壁邻居，防不住已经进了你家门的人，Chrome就是因为盗号木马专钻这个空子偷cookie，才在2024年[上了App-Bound Encryption](https://security.googleblog.com/2024/07/improving-security-of-chrome-cookies-on.html)。
 
-It exists because VRChat **removed `bio` from the WebSocket payload** in API v1.21.0 —
-which is why VRCX declared its "bio changes" feature unfixable. Since bios are no longer
-pushed, they can only be obtained by polling `GET /profile/{userId}`, which is exactly
-what this tool does.
+笔者对此给出的建议是：建议使用以用户输入的密码作为密钥的 [AES](https://zh.wikipedia.org/zh-hans/%E9%AB%98%E7%BA%A7%E5%8A%A0%E5%AF%86%E6%A0%87%E5%87%86) 或者 [插插20](https://zh.wikipedia.org/wiki/ChaCha20-Poly1305) 进行保护，将会比此安全一万倍
 
-**⚠ Risk notice**: VRChat has never published its rate-limit (429) threshold, so no one
-can compute a "safe rate". This tool is deliberately conservative — a fixed 3-second gap
-between friends, and it aborts the whole scan and enters a 10-hour cooldown on the very
-first 429 — **but a risk of account restriction or suspension still exists. Use at your own
-risk.** All data stays on your machine; the password is never written to disk.
+账号隔离也值得品鉴一下。`db.ts`开头的[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/store/db.ts#L26-L29)回忆了一段黑历史：早期版本退出登录换号以后，界面上还显示上一个账号的好友，"这是严重 bug：数据串号"，所以现在改成了每个账号一个目录。然而这个bug还有一条复活的路：扫描开始时把当前账号的数据拿在手里，但每次存盘是按"此刻登录的是谁"[决定存进哪个目录](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/store/db.ts#L487-L513)；[退出登录](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/index.ts#L639-L645)只取消了下一次自动扫描的定时器，正在跑的扫描不会停；而且整个程序只有一个网络客户端，A号退出、B号登录以后，旧扫描再发请求用的就是B的登录状态。
 
-Built with Electron + React + TypeScript. UI available in 中文 / 日本語 / English.
+正常情况下退出登录以后，旧扫描的下一个请求会因为没登录直接失败，这时候谁都没登录，存盘会被拒绝，平安无事。但是如果旧扫描刚好有一个请求卡住了，你在这期间退出A号、登上B号，等请求回来，旧扫描就会用B的登录状态接着查A的好友，然后把A的整份数据存进B的目录，B原来的数据被覆盖，界面上开始显示A的好友。笔者用mock模拟了这个时序，B的数据文件里确实出现了A的好友，相当于快递员照着最新的收件地址，把上一家的包裹送进了下一家。当然这需要请求卡得刚刚好，不过发往VRChat的请求是[没设超时的](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L128-L132)，而同一个项目里检查更新的请求倒是专门加了超时，[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/index.ts#L885)给的理由是"GitHub 在国内经常是'连得上但一直不回'"，看来在作者的世界观里GitHub会不回，VRChat不会。
+
+说到网络，网络层的处理也非常的诡异。`client.ts`的[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L134)写着"网络层失败（断网、DNS、超时）。不重试，直接把原因交上去。"，考虑到这个软件的用户大概率是开着[梯子](https://zh.wikipedia.org/zh-hans/%E8%99%9A%E6%8B%9F%E7%A7%81%E4%BA%BA%E7%BD%91%E7%BB%9C)上VRChat的，笔者用mock模拟了一下梯子切节点：连接一断，不重试，这个好友本轮直接跳过，扫描结果照样显示"正常完成"；要是切节点花了半分钟、连着断了10个：
+
+```
+[scan] 获取 usr_0030 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0031 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0032 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0033 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0034 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0035 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0036 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0037 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0038 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 获取 usr_0039 的资料失败： 无法连接 VRChat API：fetch failed
+[scan] 连续 10 次请求失败，主动中断（服务器或网络可能不可用）
+
+──────────────────────────────────────────────
+【⚠ 连续失败过多，已中断本轮扫描】
+  账号：笔者的小号 (usr_me)
+  已检查：38 / 246（进度已保存，已抓到的资料会保留）
+  连续失败：10 次（阈值 10）
+  可能原因：VRChat 服务不可用 / 网络中断 / 代理或防火墙拦截
+  说明：已检查过的好友资料不会丢失；没抓到的好友保留上一次的资料
+──────────────────────────────────────────────
+```
+
+> 请注意这只是梯子切了个节点
+
+断了，不重试，然后整轮扫描直接中断、写入`lastScanAt`，手动扫描要等两个小时，自动扫描要等十个小时，梯子打了个喷嚏，软件[睡](https://zh.wikipedia.org/zh-hans/%E7%9D%A1%E7%9C%A0)了十个小时（要是正好赶上第一次扫描，醒来还会送你一堆新朋友）。要是连接没断而是卡住了，请求又没设超时，那就原地睡着，最坏要等Node自带fetch默认的300秒超时才醒，连着卡10个就是50分钟，醒来以后接着再睡十个小时。
+
+说起[AI开发](https://github.com/tradecatlabs/vibe-coding-cn)大伙都在骂我说实话没什么意见，但是这个项目的注释非常有特色，它管作者叫"用户"，偶尔还会直接跟"你"说话，比如`watcher.ts`里的"[**用户明确要求**（他打算开源并给朋友用）](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L58-L59)"，`client.ts`里的"这个值来自 docs/DECISIONS.md 3.3 里[**和你确认过的参数**](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L23)"，DECISIONS.md里更是一共记了11处"用户原话 / 用户要求 / 用户实测"，一看就是[溜溜梅](https://zh-classical.wikipedia.org/wiki/%E5%A4%A7%E8%AA%9E%E8%A8%80%E6%A8%A1%E5%9E%8B)写的。
+
+笔者本来想在这个仓库里找一行手写代码，没找到，因为每个文件都有雷霆大注释，而且都不像人说的话。比如[src/shared/project.ts](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/shared/project.ts)一共5行代码，配了35行注释，其中一段说这个软件的名字"[改过三次了（VRChat Bio Watcher → VRCBioWatcher）](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/shared/project.ts#L11)"，笔者数了一下括号里只有一个箭头；为了"配色"，软件名还被拆成了`APP_NAME_PREFIX = 'VRC'`和`APP_NAME_BODY = 'BioWatcher'`两个常量再拼起来。源码加文档一共58个★、108个⚠，笔者读完感觉自己像是排完了一片雷区。
+
+然后是一万个猎奇写法大全。`client.ts`里写了一个`for (let attempt = 0; ; attempt++)`的[无限循环](https://zh.wikipedia.org/zh-hans/%E6%97%A0%E9%99%90%E5%BE%AA%E7%8E%AF)[用来重试429](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L115)，然后把重试次数`RETRY_ON_429`设成了0，于是这个无限循环每次都只转一圈，里面解析Retry-After、指数退避的代码全部是永远不会执行的[死代码](https://zh.wikipedia.org/zh-hans/%E6%AD%BB%E4%BB%A3%E7%A0%81)，[注释](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L151-L152)说"保留这个分支是为了万一以后要放宽"。登录成功的提示里还专门准备了一句"[注意：期间触发过限流，已自动退避](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/auth.ts#L225)"，这句话这辈子都不会显示：要显示它得先吃429，可吃了429就登录不成功；而且就算显示出来也是假话，因为上面那个循环根本不会退避。最后笔者在`client.ts`里看到了一个非常有营养的词汇："[吸收 Set-Cookie](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L93)"，"[每次响应都要吸收](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/vrchat/client.ts#L9)"，
+
+![本项目 HTTP 客户端架构图](assets/image4.png)
+
+笔者看到这个词汇的时候直接骂出了声，第一次知道cookie是可以被吸收的，这个HTTP客户端疑似是用[小肠](https://zh.wikipedia.org/zh-hans/%E5%B0%8F%E8%82%A0)实现的。
+
+最精彩的是v1.1.0的[提交信息](https://github.com/KobayashiSouryuu/VRCBioWatcher/commit/d03ce9f63e144bb6f805d0863b459834cecc3746)写着"新增 GPU 加速"，
+
+![疑似作者的显卡](assets/image6.png)
+
+笔者寻思一个十小时扫一次、界面只有表格和文字的工具要GPU加速干嘛，翻了下diff才发现，1.0.0里作者[自己写了一行](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/94a11dd760d1e15edf70923484a71d02dc1b93df/src/main/index.ts#L1099-L1109)`app.disableHardwareAcceleration()`把Electron默认开着的[硬件加速](https://zh.wikipedia.org/zh-hans/%E7%A1%AC%E4%BB%B6%E5%8A%A0%E9%80%9F)给关了，理由是"我们的界面只是表单、列表和文本差异高亮，没有任何需要 GPU 合成的动画或 3D"，然后1.1.0把这行改成默认不执行，改动理由写在[DECISIONS.md](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/docs/DECISIONS.md?plain=1#L1175)里，用户原话："理论上应该默认 gpu 加速是最好的"。先把自己的腿绑上，下个版本宣布新增[步行](https://zh.wikipedia.org/zh-hans/%E6%AD%A5%E8%A1%8C)功能。
+
+但是有一个严肃的问题，就是你的验收标准可能不太符合一个科学的提示词工程思想：这个项目有1242行的决策文档、0个自动化测试。上面这些问题大部分都是注释写得头头是道、代码没照着做，这种问题靠多写注释是发现不了的，跑一遍就露馅，笔者就是用mock一条条跑出来的。相当于溜溜梅给你写了1242行的复习笔记，但是一道题都没做过。
+
+当然笔者[喷](https://zh.wikipedia.org/wiki/%E8%B2%9D%E7%91%9E%E5%A1%94%E9%8A%80%E9%B4%BF%E9%9C%B0%E5%BD%88%E6%A7%8D)了这么多肯定会有人说我是杠精，接下来笔者给作者提供一个[解决方案](https://learn.microsoft.com/zh-cn/visualstudio/ide/solutions-and-projects-in-visual-studio?view=visualstudio)，是笔者没有消耗任何token使用[大脑](https://zh.wikipedia.org/wiki/%E5%A4%A7%E8%84%91)想出来的：429统一处理，任何一个请求吃到429都停下冷却，别让底层喊完上层装没听见；"基线建好了没有"单独用一个字段记，别让`lastScanAt`一个人打两份工；数据文件读不出来的时候先把坏文件改个名备份起来，再在界面上报错，别直接当成空的然后亲手覆盖；迁移完把旧目录删掉，或者至少告诉用户旧的还在，开加密的时候把所有位置的明文都处理掉；退出登录之前先把扫描停了等它结束，存盘的时候用扫描开始时的账号而不是"当前账号"；骤减检查的阈值要么改到让注释里的例子成立，要么给用户一个"这些人确实删了"的确认按钮；网络请求加个超时和有限次数的重试，别让梯子打个喷嚏软件就睡十个小时；会话加密如果真想防盗号木马，就让用户自己设个密码派生密钥再用AES，别指望DPAPI；最后写几个测试，上面这些场景用mock跑一遍几秒钟就出结果，还能节省你的[Claude Max](https://claude.ai/new#settings/billing)订阅代币。
+
+当然笔者也替作者想好了这个软件最适合的用户群体：既然好友越多越危险，那最适合的就是好友列表里只有一个人的赛博[纯爱](https://zh.wikipedia.org/zh-hans/%E7%BA%AF%E7%88%B1)战士们，毕竟他们只关心那一个人有没有偷偷改签名，一轮扫描几秒钟就跑完，无论如何都不会触发429。
+
+什么？那唯一的好友把你删了以后名单就空了，这个软件会提示"[好友名单为空，没有需要扫描的对象](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/renderer/src/i18n.tsx#L377)"然后[直接收工](https://github.com/KobayashiSouryuu/VRCBioWatcher/blob/d03ce9f63e144bb6f805d0863b459834cecc3746/src/main/watcher.ts#L367-L370)，在列表里坚持认为TA还是你的好友。？那没事了。！
+
+> 然而TA在你的好友列表里依然健在，因为这个软件比你还不愿意接受现实
