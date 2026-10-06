@@ -1,6 +1,6 @@
 {
   "name": "vrcbw",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
   "description": "VRCBioWatcher — 定期抓取好友资料、记录简介变化并展示差异",
   "author": "KobayashiSouryuu",

@@ -23,6 +23,18 @@ import { APP_NAME_BODY, APP_NAME_PREFIX } from '@shared/project'
 import { I18nContext, LOCALES, translate, type Lang } from './i18n'
 
 /**
+ * 定期刷新「扫描状态摘要」的间隔：**1 分钟**。
+ *
+ * 为什么是 1 分钟：界面上展示的等待时间本来就是**分钟**精度
+ * （"还要等 N 分钟才能手动扫描"，用 Math.ceil 取整）。
+ * 刷新比显示精度更密没有意义 —— 只会白白多跑 IPC。
+ *
+ * 代价：等待时间到了之后，按钮最多迟 1 分钟才变成可点。
+ * 相比"必须重启软件"（修之前的状况）完全可以接受。
+ */
+const SUMMARY_REFRESH_MS = 60_000
+
+/**
  * 应用外壳。
  *
  * ★ 两层门禁（修复「退出登录后仍能看到好友数据」的严重 bug）：
@@ -183,6 +195,35 @@ export default function App(): JSX.Element {
   useEffect(() => {
     runningRef.current = summary?.running ?? false
   }, [summary])
+
+  /**
+   * ★ 定期刷新「扫描状态摘要」（每 1 分钟，见 SUMMARY_REFRESH_MS 的说明）。
+   *
+   * 为什么必须要有：`manualScanWaitMinutes`（界面上那句"还要等 N 分钟才能手动扫描"）
+   * 是**主进程算出来的**，而界面只在四个时刻去取它：挂载、登录状态变化、
+   * 扫描进度事件、点过扫描按钮。**没有定时刷新** —— 后果是倒计时冻住：
+   *
+   *   1. 「还要等 N 分钟」一直显示挂载时那个数字，永不变化
+   *   2. 等到时间真的过去了，也没人去取新值 → 按钮**一直禁用**，
+   *      必须重启软件（重启 = 重新挂载 = 重新取值）才能点
+   *
+   * 这是用户实测报的 bug（"剩余时间提示不变，到时间也按不了按钮，必须重启"）。
+   *
+   * 只取 summary 一个，不调 refreshScanData —— 后者还会把好友列表（几百条）
+   * 和变化记录全拉一遍，每分钟来一次太重。summary 只是主进程内存里的统计值，很便宜。
+   */
+  useEffect(() => {
+    if (auth?.status !== 'logged-in') return
+    const timer = window.setInterval(() => {
+      void window.vrcbw
+        .getScanSummary()
+        .then(setSummary)
+        .catch(() => {
+          /* 取失败就算了，下一次再试 */
+        })
+    }, SUMMARY_REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [auth])
 
   // 登录状态确定后拉数据。
   // ★ 退出登录时也会走到这里：那时主进程返回的是空数据，界面上的好友列表就被清空了。
