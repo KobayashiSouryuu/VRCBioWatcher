@@ -34,6 +34,7 @@ const DEFAULTS: AppSettings = {
   autoLaunch: false,
   startMinimized: false,
   minimizeToTray: true,
+  hardwareAcceleration: true,
   windowBounds: null,
   windowMaximized: false,
   encryptData: false,
@@ -164,6 +165,9 @@ export function loadSettings(): AppSettings {
   if (typeof cache.autoLaunch !== 'boolean') cache.autoLaunch = DEFAULTS.autoLaunch
   if (typeof cache.startMinimized !== 'boolean') cache.startMinimized = DEFAULTS.startMinimized
   if (typeof cache.minimizeToTray !== 'boolean') cache.minimizeToTray = DEFAULTS.minimizeToTray
+  if (typeof cache.hardwareAcceleration !== 'boolean') {
+    cache.hardwareAcceleration = DEFAULTS.hardwareAcceleration
+  }
 
   /* 界面状态（排序 / 搜索 / 筛选）与窗口位置：值非法就回退默认，
      免得界面拿到意外值（例如手工改坏 settings.json）。 */
@@ -210,6 +214,9 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
   if (typeof next.autoLaunch !== 'boolean') next.autoLaunch = DEFAULTS.autoLaunch
   if (typeof next.startMinimized !== 'boolean') next.startMinimized = DEFAULTS.startMinimized
   if (typeof next.minimizeToTray !== 'boolean') next.minimizeToTray = DEFAULTS.minimizeToTray
+  if (typeof next.hardwareAcceleration !== 'boolean') {
+    next.hardwareAcceleration = DEFAULTS.hardwareAcceleration
+  }
   if (!SORT_KEYS.includes(next.friendsSortKey)) next.friendsSortKey = DEFAULTS.friendsSortKey
   if (typeof next.friendsSortAsc !== 'boolean') next.friendsSortAsc = DEFAULTS.friendsSortAsc
   if (typeof next.friendsQuery !== 'string') next.friendsQuery = DEFAULTS.friendsQuery

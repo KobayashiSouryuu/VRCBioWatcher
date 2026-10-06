@@ -80,6 +80,10 @@ nsis:
   deleteAppDataOnUninstall: false # ★ 卸载不删数据（好友历史是用户资产）
   # 安装程序的文件名（只影响 NSIS 这一个目标）
   artifactName: ${productName}-${version}-setup.${ext}
+  # 自定义 NSIS 片段：解包完成后给安装目录补上 AppContainer 的读取权限，
+  # 避免 Chromium 子进程起不来导致「装完打不开、报错却指向显卡」。
+  # 原因与验证方式见 build/installer.nsh 的注释和 docs/DECISIONS.md 5.8。
+  include: build/installer.nsh
 
 # 绿色版（zip）：解压后直接运行里面的 VRCBioWatcher.exe，不进注册表。
 #

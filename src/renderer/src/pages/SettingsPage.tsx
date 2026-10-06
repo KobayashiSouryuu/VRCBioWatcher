@@ -44,6 +44,8 @@ export function SettingsPage({
   onStartMinimizedChange,
   minimizeToTray,
   onMinimizeToTrayChange,
+  hardwareAcceleration,
+  onHardwareAccelerationChange,
   summary,
   info,
   openResult,
@@ -81,6 +83,8 @@ export function SettingsPage({
   onStartMinimizedChange: (value: boolean) => void
   minimizeToTray: boolean
   onMinimizeToTrayChange: (value: boolean) => void
+  hardwareAcceleration: boolean
+  onHardwareAccelerationChange: (value: boolean) => void
   summary: ScanSummary | null
   info: SystemInfo | null
   openResult: string | null
@@ -395,6 +399,21 @@ export function SettingsPage({
           <span className="checkbox-text">{t('minimizeToTrayLabel')}</span>
           {/* 括号提示跟在文字右边（用户要求放在同一行） */}
           <span className="muted checkbox-hint">{t('minimizeToTrayHint')}</span>
+        </label>
+
+        {/*
+          GPU 加速开关（用户要求加在首选项里，默认开启）。
+          ⚠ 文字必须强调"不懂就别改 + 需要重启" —— 它在 app ready 之前就决定了，
+            运行时无法切换（见 src/main/index.ts 里的说明）。
+        */}
+        <label className="checkbox checkbox-with-hint">
+          <input
+            type="checkbox"
+            checked={hardwareAcceleration}
+            onChange={(e) => onHardwareAccelerationChange(e.target.checked)}
+          />
+          <span className="checkbox-text">{t('gpuAccelLabel')}</span>
+          <span className="muted checkbox-hint">{t('gpuAccelHint')}</span>
         </label>
       </section>
 

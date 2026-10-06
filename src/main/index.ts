@@ -234,6 +234,63 @@ function syncActiveAccount(state: AuthState): AuthState {
   return state
 }
 
+/**
+ * 检测「上一次扫描是不是被中途打断的」，并把矛盾告诉用户。
+ *
+ * ## 为什么需要
+ *
+ * 好友资料是**边扫边存**的（每 SAVE_EVERY 个好友落一次盘），但
+ * `lastScanAt` / `lastScanStats`（界面上那个"上次扫描时间"和"本次变化数"）
+ * **只在整轮跑完时才写**。
+ *
+ * 于是"扫到一半退出/被杀"会留下一个自相矛盾的状态：
+ * **好友简介已经是新的了，时间戳和变化数却还是上一次的。**
+ * 用户看到的现象就是"数据变了，统计没变" —— 会以为统计坏了（用户实测反馈过）。
+ *
+ * ## 判定方式
+ *
+ * `store.scanStartedAt` 在扫描开始时写下、在扫描的 finally 里清掉（覆盖所有退出路径）。
+ * 所以启动时**它还有值** = 上个进程没能走到那一刻 = 扫描被中断。
+ *
+ * ⚠ 注意"关窗口"不算中断：关窗口只是收进托盘，扫描会继续跑。
+ *   真正会留下标记的是进程被杀、断电、任务管理器结束进程这一类。
+ *
+ * ## 为什么顺手清掉 lastScanAttemptAt
+ *
+ * 那个字段是"手动扫描最小间隔 2 小时"的计时基准之一。刚被中断的这轮只扫了一部分，
+ * 立刻重扫**并不会比正常一轮更费**（用户本来就要扫这一轮），所以这里放行，
+ * 让用户能马上补齐数据 —— 否则他得干等 2 小时。重扫完成后再正常计时。
+ */
+function checkInterruptedScan(): void {
+  const store = loadStore()
+  if (!store.scanStartedAt) return
+
+  const progress = store.scanProgress
+  const startedAt = store.scanStartedAt
+  store.lastScanWarning = {
+    code: 'scanInterrupted',
+    params: {
+      startedAt,
+      done: progress?.done ?? 0,
+      total: progress?.total ?? 0,
+    },
+    // ★ at 用**扫描开始时间**而不是"现在"：
+    //   界面上会显示「发生时间：{time}」，对这个提示来说有意义的是
+    //   "那轮扫描是什么时候开始的"，而不是我们检测到它的时刻。
+    at: startedAt,
+  }
+  store.scanStartedAt = null
+  store.scanProgress = null
+  // 放行"立即重扫"，见上面注释
+  store.lastScanAttemptAt = null
+  saveStore(store)
+
+  console.warn(
+    `[scan] 检测到上一次扫描被中断（开始于 ${startedAt}，` +
+      `进度 ${progress?.done ?? 0}/${progress?.total ?? 0}）；已在界面上标记，并允许立即重扫`,
+  )
+}
+
 function collectSystemInfo(): SystemInfo {
   let safeStorageAvailable = false
   try {
@@ -391,8 +448,22 @@ function createWindow(startHidden = false): void {
     if (boundsTimer) clearTimeout(boundsTimer)
   })
 
-  // 上次是最大化的话，这次也最大化打开
-  if (loadSettings().windowMaximized) mainWindow.maximize()
+  /*
+   * 上次是最大化的话，这次也最大化打开。
+   *
+   * ⚠️ 这里**绝对不能**在「隐藏启动」时调用 maximize()！
+   *
+   *   Electron 的 maximize() 会顺带把窗口**显示出来**（官方文档原话：
+   *   "This will also show (but not focus) the window if it isn't being displayed already"）。
+   *   于是「启动时最小化到系统托盘」会被这一行悄悄破坏：用户明明勾了那个选项，
+   *   窗口却还是弹出来 —— 而且下面 showWindow 里的 startHidden 保护完全看不出问题，
+   *   因为窗口根本不是它显示的。**这个 bug 就是这么来的。**
+   *
+   *   正确做法：隐藏启动时不碰它，等真正要显示的时候再补上最大化
+   *   （见下面的 showWindow 和 showMainWindow）。
+   */
+  const wantMaximize = loadSettings().windowMaximized
+  if (wantMaximize && !startHidden) mainWindow.maximize()
 
   // --- 窗口显示：正常路径 + 超时兜底 ---
   let windowShown = false
@@ -403,6 +474,8 @@ function createWindow(startHidden = false): void {
     windowShown = true
     console.log(`[main] 显示窗口（原因：${why}）`)
     mainWindow.show()
+    // 隐藏启动时上面没敢提前最大化（那会顺带显示窗口），在这里补上
+    if (wantMaximize && !mainWindow.isMaximized()) mainWindow.maximize()
   }
 
   mainWindow.on('ready-to-show', () => showWindow('ready-to-show 已触发'))
@@ -765,6 +838,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('app:checkUpdate', async (): Promise<UpdateCheckResult> => checkForUpdate())
+  ipcMain.handle('app:autoUpdateStatus', (): UpdateCheckResult | null => autoUpdateResult)
 
   ipcMain.handle('app:openExternal', async (_event, url: string): Promise<boolean> => {
     /*
@@ -797,7 +871,7 @@ function registerIpcHandlers(): void {
  *
  * 仓库地址从设置的 `githubUrl` 里解析 —— 所以作者只要填对地址，这个功能就能用。
  */
-async function checkForUpdate(): Promise<UpdateCheckResult> {
+async function checkForUpdate(timeoutMs = 10000): Promise<UpdateCheckResult> {
   const current = app.getVersion()
   // 仓库地址写死在 src/shared/project.ts 里，不做成设置项 —— 见那里的注释
   const match = /github\.com\/([^/]+)\/([^/?#]+)/.exec(PROJECT_URL)
@@ -808,6 +882,9 @@ async function checkForUpdate(): Promise<UpdateCheckResult> {
   const api = `https://api.github.com/repos/${match[1]}/${match[2]}/releases/latest`
   try {
     const res = await fetch(api, {
+      // ★ 必须带超时：GitHub 在国内经常是"连得上但一直不回"，没有超时的话
+      //   这个 Promise 会挂很久，重试逻辑也就永远走不到下一轮。
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         Accept: 'application/vnd.github+json',
         // GitHub 要求带 UA，并且我们自己也有义务表明身份
@@ -844,6 +921,50 @@ async function checkForUpdate(): Promise<UpdateCheckResult> {
   }
 }
 
+/**
+ * 启动时的**静默**更新检查（用户要求：不弹窗，只在侧栏给一个入口）。
+ *
+ * ## 策略
+ *
+ * - 最多试 **3 次**（每次超时 6 秒，间隔递增），全失败就彻底放弃
+ * - 失败**不提示、不记警告**：中国大陆网络到 GitHub 经常不通，
+ *   这是预期内的正常情况，为此打扰用户是错的
+ * - 找到新版本时把结果存进内存，并推一条事件让界面把入口显示出来
+ * - 不阻塞启动：它跑在后台，界面该多快还是多快
+ *
+ * ⚠ 这里请求的是 **GitHub API，完全不碰 VRChat** ——
+ *   所以这个功能不会增加任何限流/封号风险。
+ */
+async function checkForUpdateQuietly(): Promise<void> {
+  try {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const result = await checkForUpdate(6000)
+      if (result.ok) {
+        autoUpdateResult = result
+        if (result.hasUpdate) {
+          console.log(
+            `[update] 发现新版本 ${result.latest}（当前 ${result.current}）—— 会在侧栏显示入口`,
+          )
+          const win = mainWindow
+          if (win && !win.isDestroyed()) win.webContents.send('app:updateAvailable', result)
+        } else {
+          console.log(`[update] 已是最新版本（${result.current}）`)
+        }
+        return
+      }
+      if (attempt < 3) {
+        console.log(`[update] 第 ${attempt} 次自动检查失败：${result.error ?? '未知原因'}，准备重试`)
+        await new Promise((resolve) => setTimeout(resolve, 1500 * attempt))
+      } else {
+        console.log(`[update] 自动检查放弃（已试 3 次）：${result.error ?? '未知原因'}`)
+      }
+    }
+  } catch (err) {
+    // 这个函数是"附加功能"，任何意外都不该冒泡出去影响启动
+    console.log('[update] 自动检查出现意外：', err instanceof Error ? err.message : err)
+  }
+}
+
 /** 比较形如 1.2.3 的版本号：a > b 返回正数 */
 function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map((n) => Number.parseInt(n, 10) || 0)
@@ -867,8 +988,20 @@ function applyAutoLaunch(enabled: boolean): void {
     return
   }
   try {
-    app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath })
-    console.log(`[startup] 开机自启已${enabled ? '开启' : '关闭'}`)
+    /*
+     * ★ 参数 `--startup` 不能省。
+     *
+     * 主进程靠它区分"是开机自启拉起来的"还是"用户自己打开的"：
+     * 只有前者才最小化到托盘（见 whenReady 里的 launchedByAutostart）。
+     * 少了它，注册表里那条自启命令就没有标记，最小化启动会失效；
+     * 反过来若把它加到普通快捷方式上，用户双击图标就会被藏起来。
+     */
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+      args: ['--startup'],
+    })
+    console.log(`[startup] 开机自启已${enabled ? '开启' : '关闭'}（带 --startup 参数）`)
   } catch (err) {
     console.warn('[startup] 设置开机自启失败：', err instanceof Error ? err.message : err)
   }
@@ -1057,6 +1190,17 @@ function showMainWindow(): void {
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+  /*
+   * 补上最大化。
+   *
+   * 正常启动时窗口在创建阶段就最大化了，但**隐藏启动**（设置里的「启动时最小化到托盘」）
+   * 那时不能调 maximize() —— 它会把隐藏的窗口显示出来。
+   * 所以用户从托盘点开时，在这里按上次的状态补上。
+   *
+   * 注意用 windowMaximized 这个**设置值**而不是 isMaximized()：
+   * 窗口隐藏期间状态不会变，设置值才反映用户上次的真实意图。
+   */
+  if (loadSettings().windowMaximized && !mainWindow.isMaximized()) mainWindow.maximize()
 }
 
 function refreshTrayMenu(): void {
@@ -1090,23 +1234,55 @@ function createTray(): void {
   tray = new Tray(image)
   tray.setToolTip(TRAY_LABELS[loadSettings().lang]?.tooltip ?? TRAY_LABELS.zh.tooltip)
   refreshTrayMenu()
-  // 双击托盘图标 = 显示主界面（Windows 上的习惯操作）
-  tray.on('double-click', () => showMainWindow())
+  /*
+   * 托盘图标：**单击**即唤出主界面（原来是双击）。
+   *
+   * Windows 上托盘图标设了上下文菜单之后，**右键**才会弹菜单，左键单击不会，
+   * 所以用 click 是安全的、不会和菜单冲突。
+   */
+  tray.on('click', () => showMainWindow())
   console.log('[tray] 托盘图标已创建；关闭窗口将隐藏到托盘')
 }
 
+/** 当前是否启用了硬件加速（下面决定，供诊断报告显示用） */
+let hardwareAccelerationEnabled = false
+
+/**
+ * 启动时自动检查更新的结果（null = 还没检查完 / 检查失败）。
+ * 界面通过 `app:autoUpdateStatus` 取它，据此决定要不要显示「有新版本」。
+ */
+let autoUpdateResult: UpdateCheckResult | null = null
+
 // ---------------------------------------------------------------------------
-// ★ 关闭硬件加速（必须在 app ready 之前调用）
+// ★ 硬件加速开关（必须在 app ready 之前决定）
 // ---------------------------------------------------------------------------
-// 为什么这么做：我们的界面只是表单、列表和文本差异高亮，没有任何需要 GPU 合成的
-// 动画或 3D。对一个可能连续挂机数天的监控工具来说，软件渲染更省资源，
-// 也免去了各家显卡驱动带来的渲染差异。
-//
-// ⚠ 但必须说清楚：**这不能防止「GPU 进程启动失败」那类崩溃**。
-//   实测与上游报告都表明，即便加了 --disable-gpu，Chromium 仍会启动 GPU 子进程，
-//   而该子进程会在极早期初始化阶段失败退出（见下一段与 docs/DECISIONS.md 5.8）。
-//   不要误以为这一行能治那个毛病。
-app.disableHardwareAcceleration()
+/*
+ * 为什么必须在这里、而不能等界面来设置：
+ *   Chromium 一旦初始化完成，图形栈就已经定下来了，之后没有 API 能在运行时切换。
+ *   所以它是**读设置文件 → 立即决定**，改完必须重启软件（界面上有明确提示）。
+ *
+ * 默认是**开启**（Chromium 的原生默认行为）。下面这些情况才关掉：
+ *   1. 用户在「设置 → 首选项」里手动关掉（显卡驱动导致花屏/字体发虚时的自救手段）
+ *   2. 环境变量 VRCBW_SOFTWARE_RENDER=1（排查用，不需要改设置文件）
+ *
+ * ⚠ 不要误以为关掉它能治「GPU process isn't usable. Goodbye.」那类崩溃：
+ *   实测与上游报告都表明，即便加了 --disable-gpu，Chromium 仍会启动 GPU 子进程，
+ *   而失败发生在更早的沙箱 token 构造阶段（见 docs/DECISIONS.md 5.8）。
+ *   那一类问题的绕过方式是下面的 VRCBW_DISABLE_GPU_SANDBOX=1。
+ */
+{
+  const forcedSoftware = process.env['VRCBW_SOFTWARE_RENDER'] === '1'
+  const enabled = forcedSoftware ? false : loadSettings().hardwareAcceleration
+  hardwareAccelerationEnabled = enabled
+  if (enabled) {
+    console.log('[main] 硬件加速：已启用（GPU）')
+  } else {
+    app.disableHardwareAcceleration()
+    console.log(
+      `[main] 硬件加速：已关闭（软件渲染）${forcedSoftware ? ' —— 来自环境变量 VRCBW_SOFTWARE_RENDER=1' : ' —— 来自设置'}`,
+    )
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 故障排查开关：VRCBW_DISABLE_GPU_SANDBOX=1
@@ -1170,6 +1346,16 @@ if (!gotSingleInstanceLock) {
       app.quit()
       return
     }
+    /*
+     * 开机自启拉起第二个实例（前一个实例还在托盘里）：**不要**把窗口叫出来。
+     *
+     * 用户设置的是"随 Windows 启动时最小化到托盘" —— 开机时他看到窗口弹出来
+     * 就完全违背了这个设置。所以带 --startup 的启动请求到此为止。
+     */
+    if (argv.includes('--startup')) {
+      console.log('[main] 收到 --startup（开机自启）且已有实例在运行：保持隐藏')
+      return
+    }
     // 否则把已经运行的实例叫到前台
     showMainWindow()
   })
@@ -1189,24 +1375,55 @@ if (!gotSingleInstanceLock) {
 
     registerIpcHandlers()
 
+    /*
+     * 静默检查更新（不 await、不弹窗）。
+     * 放在这里而不是更早：它要往窗口推事件，窗口得先存在 —— 但也不必等它，
+     * 所以是 void 出去让它自己跑。
+     */
+    void checkForUpdateQuietly()
+
     // 先留下「主进程已就绪」的证据，再创建窗口。
     // 这样万一窗口创建阶段就崩了，也能从报告里看出断在哪一步。
     updateDevReport({
       mainStarted: true,
-      hardwareAcceleration: false,
+      hardwareAcceleration: hardwareAccelerationEnabled,
       systemInfo: collectSystemInfo(),
     })
 
     // 先建托盘：窗口的"以最小化启动"依赖托盘是否存在
     // （托盘创建失败时不能隐藏窗口，否则用户没有任何办法唤出界面）
     createTray()
-    createWindow(settings.startMinimized && Boolean(tray))
+    /*
+     * 「启动时最小化到托盘」**只在开机自启那一次生效**（用户要求）。
+     *
+     * 判定依据是启动参数 `--startup` —— 它由 applyAutoLaunch() 写进注册表的
+     * 开机自启项里（见那个函数）。所以：
+     *   - 开机自启 → argv 里有 --startup → 最小化启动，安静待在托盘
+     *   - 用户手动双击图标 / 命令行运行 / 开发模式 → 没有这个参数 → 正常显示窗口
+     *
+     * 这样"最小化"就只服务于它真正的目的（开机时别打扰用户），
+     * 而不是把用户主动打开软件也一起藏起来。
+     */
+    const launchedByAutostart = process.argv.includes('--startup')
+    createWindow(settings.startMinimized && launchedByAutostart && Boolean(tray))
+    console.log(
+      `[main] 启动方式：${launchedByAutostart ? '开机自启' : '用户手动'}；` +
+        `窗口${settings.startMinimized && launchedByAutostart && Boolean(tray) ? '隐藏到托盘' : '正常显示'}`,
+    )
 
     // 主动恢复一次会话（不等界面来问）：
     // 「启动时若距上次扫描已超过 10 小时就自动扫描」不应该依赖界面是否加载成功。
     // auth.restore() 内部是记忆化的，界面稍后再问会拿到同一个结果，不会重复请求。
     void auth.restore().then((state) => {
       syncActiveAccount(state)
+      /*
+       * ★ 只在**启动时**做这个检查。
+       *
+       * 不能放进 syncActiveAccount 里：那个函数在登录等流程中也会被调用，
+       * 而那些时刻**可能正有一轮扫描在跑**（scanStartedAt 有值），就会误报成"被中断"。
+       * 只有启动的那一瞬间，"标记还在"才等价于"上个进程死在中途"。
+       */
+      checkInterruptedScan()
       if (state.status === 'logged-in') onLoggedIn()
       else console.log('[main] 未登录，等待用户登录后再排定扫描')
     })

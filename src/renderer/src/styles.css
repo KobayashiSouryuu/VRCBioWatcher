@@ -21,13 +21,21 @@
    * 界面字体。用户可在设置里更换。
    *
    * ⚠ 无论换成哪个字体，**末尾都必须保留一个中文字体**：
-   *   否则中文会落到系统默认的宋体（SimSun），在界面里非常突兀 ——
-   *   等宽字体栈就是这样出的问题（见 .mono / .bio-block）。
+   *   否则中文会落到系统默认的宋体（SimSun），在界面里非常突兀。
+   *
+   * 注：界面里**没有**等宽字体了（用户要求全局统一）—— 唯一例外是
+   *     下面 .diag-textarea 里的诊断日志，那是真正要复制粘贴的日志文本。
    */
   --font-ui: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system,
     sans-serif;
-  /* 等宽字体：拉丁用 Cascadia Mono，中文明确指定雅黑，避免 fallback 到宋体 */
-  --font-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace;
+  /*
+   * 等宽字体栈。**只给诊断日志（.diag-textarea）用**，界面其它地方一律不用。
+   *
+   * 顺序说明：Consolas 放第一位（用户要求 —— 之前第一位是 Cascadia Mono，
+   * 那个字体随 Windows Terminal 一起装，字形偏"终端风"，和用户预期不符）。
+   * 后面必须保留中文字体：诊断日志里有大量中文，否则会 fallback 到宋体。
+   */
+  --font-mono: Consolas, "Cascadia Mono", "Microsoft YaHei UI", "Microsoft YaHei", monospace;
 
   --bg: #f5f6f8;
   --card: #ffffff;
@@ -359,6 +367,41 @@ button.nav-item.active {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/*
+ * 「有新版本」入口。
+ *
+ * 位置在统计区上方、分割线上方（用户指定）。用主题色描边 + 小圆点，
+ * 目的是"看得见但不刺眼" —— 它是个提示，不是警告（扫描异常才是警告）。
+ */
+.update-entry {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 4px 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: calc(12.5px * var(--fs-scale));
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.update-entry:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 
 .sidebar-stat {
@@ -921,8 +964,14 @@ p:last-child {
   user-select: text;
 }
 
+/*
+ * 强调用的内联样式（`rich()` 里用反引号包起来的内容，例如文件名、路径）。
+ *
+ * ⚠ 这里**故意不用等宽字体**：用户明确要求整个界面不能出现等宽字体
+ *   （"那些链接、文字看起来像代码，但其实不是代码"）。
+ *   所以只保留字号差异，字体与其它内容完全一致。
+ */
 .mono {
-  font-family: var(--font-mono);
   font-size: calc(12.5px * var(--fs-scale));
 }
 
@@ -1060,13 +1109,21 @@ label.checkbox {
 /*
  * 带括号提示的复选框：提示跟在文字右边（同一行）。
  *
- * ⚠ 不要给 .checkbox-text 单独设颜色 —— label.checkbox 整体是 --muted，
+ * ⚠⚠ **绝对不要在这里改 `gap`！**
+ *
+ *   它必须和普通 `.checkbox` 完全一致（都是 8px）。之前这里写了 `gap: 6px`，
+ *   结果"带括号提示"的那几行，复选框后面的文字比其它行整体**左移 2px** ——
+ *   一排选项里只有几行偏了，用户一眼就看出来（实测反馈："第一个和上面是对齐的，
+ *   后面三个偏左，多一个空格吗？"）。**不是空格，是 gap。**
+ *
+ *   这里只允许加换行相关的属性（flex-wrap），间距一律继承 label.checkbox。
+ *
+ * ⚠ 也不要给 .checkbox-text 单独设颜色 —— label.checkbox 整体是 --muted，
  *   单独把这一行的文字改成 --text（近黑）会让它在一排选项里特别突兀
  *   （用户反馈过）。它和别的选项用同一个颜色，靠后面的括号提示补足信息就够了。
  */
 label.checkbox.checkbox-with-hint {
   flex-wrap: wrap;
-  gap: 6px;
 }
 
 .checkbox-with-hint .checkbox-hint {

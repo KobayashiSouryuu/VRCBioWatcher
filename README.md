@@ -143,8 +143,8 @@ npm run dist   # 安装程序 + 绿色版 zip → release\
 
 | 文件 | 说明 |
 |---|---|
-| `VRCBioWatcher-1.0.0-setup.exe` | NSIS 安装程序。装到 `C:\Program Files\VRCBioWatcher`，**安装时会弹一次 UAC**（装到 Program Files 的必要代价）。卸载时**不会删除你的数据** |
-| `VRCBioWatcher-1.0.0-win.zip` | 绿色版：**解压到一个空文件夹**，运行里面的 `VRCBioWatcher.exe`。不进注册表、不需要管理员 |
+| `VRCBioWatcher-<版本号>-setup.exe` | NSIS 安装程序。装到 `C:\Program Files\VRCBioWatcher`，**安装时会弹一次 UAC**（装到 Program Files 的必要代价）。卸载时**不会删除你的数据** |
+| `VRCBioWatcher-<版本号>-win.zip` | 绿色版：**解压到一个空文件夹**，运行里面的 `VRCBioWatcher.exe`。不进注册表、不需要管理员 |
 
 > 想改成「装到用户目录、不要 UAC」：把 `electron-builder.yml` 里的 `perMachine` 改成 `false`。
 > 那样会多出一个「安装模式选择页」，且安装程序无法强制结束正在运行的应用（见下面的提示）。

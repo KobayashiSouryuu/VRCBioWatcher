@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react'
-import type { AuthState, ScanSummary } from '@shared/types'
+import type { AuthState, ScanSummary, UpdateCheckResult } from '@shared/types'
 import { APP_NAME, APP_NAME_BODY, APP_NAME_PREFIX } from '@shared/project'
 import { PAGES, type PageKey } from '../lib'
 import { useI18n } from '../i18n'
@@ -11,18 +11,26 @@ export function Sidebar({
   auth,
   summary,
   onLogout,
+  update,
+  onOpenRelease,
 }: {
   page: PageKey
   onChange: (page: PageKey) => void
   auth: AuthState | null
   summary: ScanSummary | null
   onLogout: () => void
+  /** 启动时自动检查更新的结果；null = 没检查完 / 检查失败 / 已是最新 */
+  update: UpdateCheckResult | null
+  /** 点「有新版本」→ 用浏览器打开 GitHub Releases 页 */
+  onOpenRelease: (url: string) => void
 }): JSX.Element {
   const { t } = useI18n()
   const [menuOpen, setMenuOpen] = useState(false)
   const name = auth?.self?.displayName ?? t('loggedIn')
   /** 上一轮扫描出过问题 → 在「概览」旁边挂一个提醒标记（详情在概览页的横幅里） */
   const hasWarning = Boolean(summary?.lastScanWarning)
+  /** 自动检查确实发现了更新的版本（检查失败 / 已是最新都不会显示入口） */
+  const hasUpdate = Boolean(update?.ok && update.hasUpdate && update.releaseUrl)
 
   return (
     <nav className="sidebar">
@@ -58,6 +66,24 @@ export function Sidebar({
       </ul>
 
       <div className="sidebar-foot">
+        {/*
+          「有新版本」入口：放在统计区**上方**（用户指定的位置 —— 也就是那条分割线上面）。
+          只在自动检查确实发现新版本时才出现，点击直接用浏览器打开 Releases 页。
+          ⚠ 刻意不做成弹窗：这个软件默认启动就收进托盘，弹窗会打扰用户，
+            而且国内网络检查失败是常态，弹出来只会刷存在感。
+        */}
+        {hasUpdate ? (
+          <button
+            type="button"
+            className="update-entry"
+            onClick={() => onOpenRelease(String(update?.releaseUrl))}
+            title={t('updateAvailableTitle', { version: String(update?.latest ?? '') })}
+          >
+            <span className="update-dot" />
+            {t('updateAvailable', { version: String(update?.latest ?? '') })}
+          </button>
+        ) : null}
+
         {/*
           只放两个数字：本次变化 / 累计变化。
           「已解除」已按用户要求删掉 —— 好友删了就是删了，没必要常驻显示。

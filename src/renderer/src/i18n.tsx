@@ -190,7 +190,7 @@ const zh = {
   labelLastChecked: '上次检查',
   labelLastChanged: '最近变化',
   labelChangeCount: '变化次数',
-  drawerHistory: '简介最近 5 次变化历史（共 {n} 条）',
+  drawerHistory: '最近 5 次变化记录（共 {n} 条）',
   drawerNoHistory: '还没有检测到这个人的任何变化。',
 
   // --- 字段名 ---
@@ -234,10 +234,12 @@ const zh = {
   // --- 设置：启动行为 ---
   startupTitle: '首选项',
   autoLaunchLabel: '随 Windows 启动自动运行',
-  startMinimizedLabel: '启动时最小化到系统托盘',
+  startMinimizedLabel: '随 Windows 启动时最小化到系统托盘',
   minimizeToTrayLabel: '关闭窗口时最小化到系统托盘',
   /** 括号提示，跟在上面那行文字的右边（用户指定文案） */
   minimizeToTrayHint: '（默认开启；关闭此选项后，点关闭窗口会终止程序，同时也会停止扫描）',
+  gpuAccelLabel: '启用 GPU 加速',
+  gpuAccelHint: '（默认开启；如果 UI 显示有问题可以尝试关闭此选项，更改后重启软件生效）',
 
   // --- 关于页 ---
   navAbout: '关于',
@@ -379,11 +381,17 @@ const zh = {
     '⚠ 本轮只成功检查了 {done}/{total} 个好友（跳过 {skipped} 个）—— **结果不可信**，不能当作"没有变化"。可能是 VRChat 服务或网络有问题。',
   scanRelationSkipped:
     '拿到的好友名单自相矛盾，已跳过本轮的「解除好友」判定，避免产生假记录。',
+  scanInterrupted:
+    '上一次扫描**没跑完就被中断了**（进度 {done}/{total} 个好友）。好友简介是**边扫边存**的，所以那部分数据已经写进列表了；但「上次扫描时间」和「变化数」只在整轮跑完时才更新 —— **界面显示的仍是上一次完整扫描的数字**。建议现在重新扫描一次把它补齐。',
 
   // --- 概览页：上一轮扫描异常横幅 ---
   warningTitle: '上一轮扫描出现了问题',
   warningDismiss: '知道了',
   warningAt: '发生时间：{time}',
+
+  // --- 侧栏：有新版本入口 ---
+  updateAvailable: '有新版本 {version}',
+  updateAvailableTitle: '发现新版本 {version} —— 点击在浏览器中打开 GitHub 发布页',
 
   // --- 概览页：全新账号的首次引导 ---
   firstRunTitle: '还没有任何数据',
@@ -524,7 +532,7 @@ const ja: Record<TKey, string> = {
   labelLastChecked: '前回の確認',
   labelLastChanged: '最近の変更',
   labelChangeCount: '変更回数',
-  drawerHistory: '自己紹介の直近 5 件の変更履歴（全 {n} 件）',
+  drawerHistory: '直近 5 件の変更履歴（全 {n} 件）',
   drawerNoHistory: 'この人の変更はまだ検出されていません。',
 
   fieldDisplayName: '名前',
@@ -565,10 +573,13 @@ const ja: Record<TKey, string> = {
   // --- 設定：起動と終了 ---
   startupTitle: '環境設定',
   autoLaunchLabel: 'Windows 起動時に自動で実行する',
-  startMinimizedLabel: '起動時はトレイに最小化する',
+  startMinimizedLabel: 'Windows 起動時にトレイへ最小化する',
   minimizeToTrayLabel: 'ウィンドウを閉じたらトレイに最小化する',
   minimizeToTrayHint:
     '（既定でオン。オフにすると、閉じるボタンでプログラムが終了し、スキャンも停止します）',
+  gpuAccelLabel: 'GPU アクセラレーションを有効にする',
+  gpuAccelHint:
+    '（既定でオン。UI の表示に問題がある場合は、この項目をオフにしてみてください。変更後は再起動が必要です）',
 
   // --- 概要ページ ---
   navAbout: 'このアプリについて',
@@ -706,10 +717,15 @@ const ja: Record<TKey, string> = {
     '⚠ 今回は {total} 人中 {done} 人しか確認できませんでした（スキップ {skipped} 人）—— **結果は信頼できません**。「変更なし」と見なさないでください。VRChat のサービスかネットワークに問題がある可能性があります。',
   scanRelationSkipped:
     '取得したフレンドリストが矛盾していたため、今回の「フレンド解除」判定をスキップしました（誤った記録を防ぐため）。',
+  scanInterrupted:
+    '前回のスキャンは**最後まで完了せず中断されました**（進捗 {done}/{total} 人）。プロフィールは取得のたびに保存されるため、その分は既に一覧に反映されています。ただし「前回のスキャン時刻」と「変更数」は最後まで完走した時にだけ書き込まれるため、**表示は前回完了したスキャンのまま**です。今すぐ再スキャンして補完することをおすすめします。',
 
   warningTitle: '前回のスキャンで問題が発生しました',
   warningDismiss: '閉じる',
   warningAt: '発生時刻：{time}',
+
+  updateAvailable: '新しいバージョン {version}',
+  updateAvailableTitle: '新しいバージョン {version} があります —— クリックで GitHub のリリースページを開きます',
 
   firstRunTitle: 'まだデータがありません',
   firstRunIntro:
@@ -847,7 +863,7 @@ const en: Record<TKey, string> = {
   labelLastChecked: 'Last checked',
   labelLastChanged: 'Last changed',
   labelChangeCount: 'Change count',
-  drawerHistory: 'Last 5 bio changes ({n} in total)',
+  drawerHistory: 'Last 5 change records ({n} in total)',
   drawerNoHistory: 'No changes detected for this friend yet.',
 
   fieldDisplayName: 'Name',
@@ -879,10 +895,13 @@ const en: Record<TKey, string> = {
   // --- Startup and shutdown ---
   startupTitle: 'Preferences',
   autoLaunchLabel: 'Start automatically when Windows starts',
-  startMinimizedLabel: 'Start minimized to the tray',
+  startMinimizedLabel: 'Minimize to the tray when Windows starts',
   minimizeToTrayLabel: 'Minimize to the system tray when the window is closed',
   minimizeToTrayHint:
     '(On by default. If you turn this off, closing the window will quit the program and stop scanning.)',
+  gpuAccelLabel: 'Enable GPU acceleration',
+  gpuAccelHint:
+    '(On by default. If the UI looks wrong, try turning this off. Restart required.)',
 
   // --- About page ---
   navAbout: 'About',
@@ -1031,10 +1050,15 @@ const en: Record<TKey, string> = {
     '⚠ Only {done}/{total} friends could be checked this round ({skipped} skipped) — **the result is not trustworthy** and must not be read as “no changes”. VRChat’s service or your network may be having problems.',
   scanRelationSkipped:
     'The friend list we received was self-contradictory, so the “friendship ended” check was skipped for this round to avoid creating false records.',
+  scanInterrupted:
+    'The previous scan was **interrupted before it finished** (progress {done}/{total} friends). Profiles are saved as they are fetched, so that partial data is already in the list — but “last scan time” and the change count are only written when a scan runs to completion, so those still show the **last complete scan**. Re-scanning now is recommended to fill the gap.',
 
   warningTitle: 'The last scan had a problem',
   warningDismiss: 'Dismiss',
   warningAt: 'Happened at: {time}',
+
+  updateAvailable: 'Version {version} available',
+  updateAvailableTitle: 'Version {version} is available — click to open the GitHub release page',
 
   firstRunTitle: 'No data yet',
   firstRunIntro:
@@ -1104,6 +1128,7 @@ const SCAN_MSG_KEYS: Record<ScanMessageCode, TKey> = {
   tooManyFailures: 'scanTooManyFailures',
   doneMostlyFailed: 'scanDoneMostlyFailed',
   relationCheckSkipped: 'scanRelationSkipped',
+  scanInterrupted: 'scanInterrupted',
 }
 
 /** 把主进程给的扫描状态渲染成当前语言的文案 */

@@ -324,6 +324,16 @@ export class Watcher {
     store.lastScanAttemptAt = new Date().toISOString()
     // 新一轮开始，先清掉上一轮的异常标记；这轮再出问题会重新写上。
     store.lastScanWarning = null
+    /*
+     * ★ 写下"扫描进行中"的标记。
+     *
+     * 好友资料是边扫边存的，所以中途被杀会留下部分更新的数据；而统计只在跑完时写。
+     * 这个标记让**下次启动**能判断出"上一个进程死在扫描中途"（见 main/index.ts 的
+     * checkInterruptedScan），从而把矛盾告诉用户，而不是让他以为统计坏了。
+     * 正常跑完或异常结束都会在下面的 finally 里清掉。
+     */
+    store.scanStartedAt = new Date().toISOString()
+    store.scanProgress = { done: 0, total: 0 }
     saveStore(store)
 
     try {
@@ -736,7 +746,11 @@ export class Watcher {
         done++
 
         // 定期落盘，避免中途退出丢掉全部进度
-        if (done % SAVE_EVERY === 0) saveStore(store)
+        if (done % SAVE_EVERY === 0) {
+          // 顺便把进度快照写进去：中断时能告诉用户"扫到第几个断的"
+          store.scanProgress = { done, total: ordered.length }
+          saveStore(store)
+        }
       }
 
       // --- 收尾：lastScanAt 是"完成时刻"，调度计时从它开始 ---
@@ -805,6 +819,17 @@ export class Watcher {
     } finally {
       this.running = false
       this.stopRequested = false
+      /*
+       * 清掉"扫描进行中"的标记 —— 这里覆盖**所有**退出路径：
+       * 正常跑完、提前 return（拉名单失败 / 好友为空 / 401 / 429 / 连续失败太多）、
+       * 以及上面 catch 到的异常。只要走到这里，就说明本进程没有"死在扫描中途"。
+       *
+       * ⚠ 这个 finally 是中断判定的正确性关键：漏掉任何一条退出路径，
+       *   下次启动就会误报「上次扫描意外中断」。
+       */
+      store.scanStartedAt = null
+      store.scanProgress = null
+      saveStore(store)
     }
   }
 }

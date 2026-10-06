@@ -213,6 +213,15 @@ export type ScanMessageCode =
   | 'doneMostlyFailed'
   /** 拿到的名单自相矛盾，跳过了"解除好友"判定，避免造出几百条假记录 */
   | 'relationCheckSkipped'
+  /**
+   * 上一次扫描**没跑完**就被中断了（进程被杀 / 断电 / 在扫描中途退出）。
+   *
+   * 为什么需要：好友资料是边扫边存的，所以中断会留下一份**部分更新**的数据，
+   * 而「上次扫描时间 / 变化数」这些统计只在跑完时才写 —— 界面上就是
+   * 「数据变了，时间戳和变化数却还是上一次的」。用户会以为统计坏了。
+   * 启动时检测到这种状态就把它标出来，让用户知道数据不完整、需要重扫。
+   */
+  | 'scanInterrupted'
 
 /**
  * 上一次扫描留下的异常记录。
@@ -365,10 +374,25 @@ export interface AppSettings {
   dataDir: string
   /** 随 Windows 启动自动运行（仅打包版有效） */
   autoLaunch: boolean
-  /** 启动时最小化到托盘 */
+  /**
+   * 随 Windows 启动时**最小化到托盘**（只影响开机自启那一次）。
+   *
+   * 用户手动双击图标打开时**不会**最小化 —— 那不符合直觉，用户要的就是看到窗口。
+   * 判定靠开机自启项里的 `--startup` 参数（见 main/index.ts 的 applyAutoLaunch）。
+   */
   startMinimized: boolean
   /** 关闭窗口时最小化到托盘；关掉则关闭即退出 */
   minimizeToTray: boolean
+  /**
+   * 启用 GPU（硬件）加速。**默认开启**。
+   *
+   * ⚠ 这一项**必须在 app ready 之前**决定，所以改完必须重启软件才生效
+   *   （界面上有明确提示）。关掉它只是退回软件渲染，不影响任何功能。
+   *
+   * 为什么要做成开关：少数机器上显卡驱动会让界面出现花屏/字体发虚，
+   * 此时用户需要一个自救手段，而不必去设环境变量。
+   */
+  hardwareAcceleration: boolean
   /**
    * 上次关闭时的窗口位置与大小；null = 还没记录过（首次启动用默认值并居中）。
    *
@@ -465,4 +489,14 @@ export interface VrcbwApi {
   openExternal(url: string): Promise<boolean>
   /** 向 GitHub Releases 查询最新版本并与本地比较 */
   checkUpdate(): Promise<UpdateCheckResult>
+  /**
+   * 取「启动时自动检查更新」的结果（没检查完 / 检查失败时返回 null）。
+   *
+   * 主进程在启动后**静默**检查一次（最多 3 次重试，失败就算了 —— 中国大陆
+   * 网络到 GitHub 经常不通，这属于预期情况，不该打扰用户）。
+   * 界面据此在侧栏显示一个「有新版本」入口，不弹任何窗口。
+   */
+  getAutoUpdateStatus(): Promise<UpdateCheckResult | null>
+  /** 订阅「自动检查发现新版本」事件（检查完成时推送一次） */
+  onUpdateAvailable(handler: (result: UpdateCheckResult) => void): () => void
 }

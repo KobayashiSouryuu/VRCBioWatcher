@@ -83,6 +83,20 @@ export interface Store {
    */
   lastScanAttemptAt: string | null
   /**
+   * 当前是否有一轮扫描**正在跑**：非空 = 开始时间。
+   *
+   * 为什么需要它：好友资料是**边扫边存**的，所以"扫到一半被中断"会留下一份
+   * **部分更新的数据**，但 `lastScanAt` / `lastScanStats` 只在跑完时才写 ——
+   * 界面上就会出现「数据是新的、时间戳和变化数却是上一次的」这种自相矛盾。
+   *
+   * 判定方式很土但很可靠：开始扫描时写下这个时间戳，正常跑完（或异常结束）时清空。
+   * **如果下次启动时它还有值，就说明上个进程是在扫描中途死掉的**（关窗口不算，
+   * 因为关窗口只是收进托盘、扫描会继续跑）。
+   */
+  scanStartedAt: string | null
+  /** 扫描中途的进度快照（和 scanStartedAt 同生共死），用于告诉用户"扫到哪一步断的" */
+  scanProgress: { done: number; total: number } | null
+  /**
    * 上次触发限流（429）的时间。非空即进入冷却期，期间拒绝开始新的扫描。
    * 放在数据文件里而不是内存里：冷却期必须**跨重启有效**。
    */
@@ -105,6 +119,8 @@ export function emptyStore(): Store {
     lastScanAt: null,
     lastScanStats: null,
     lastScanAttemptAt: null,
+    scanStartedAt: null,
+    scanProgress: null,
     lastRateLimitAt: null,
     lastScanWarning: null,
   }
@@ -183,6 +199,9 @@ function migrateLegacyData(): boolean {
       lastScanStats: legacy.lastScanStats ?? null,
       // 旧格式没有这个字段：把完成时间当作尝试时间，语义上最接近
       lastScanAttemptAt: legacy.lastScanAt ?? null,
+      // 旧格式不可能"正好在扫描中途"：一律当作没有进行中的扫描
+      scanStartedAt: null,
+      scanProgress: null,
       lastRateLimitAt: legacy.lastRateLimitAt ?? null,
       lastScanWarning: null,
     })
@@ -415,6 +434,8 @@ function normalizeStore(parsed: Partial<Store> | null): Store {
     lastScanAt: parsed.lastScanAt ?? null,
     lastScanStats: parsed.lastScanStats ?? null,
     lastScanAttemptAt: parsed.lastScanAttemptAt ?? null,
+    scanStartedAt: parsed.scanStartedAt ?? null,
+    scanProgress: parsed.scanProgress ?? null,
     lastRateLimitAt: parsed.lastRateLimitAt ?? null,
     lastScanWarning: parsed.lastScanWarning ?? null,
   }

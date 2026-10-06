@@ -74,6 +74,15 @@ const api: VrcbwApi = {
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('app:copyText', text),
   openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('app:openExternal', url),
   checkUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('app:checkUpdate'),
+  getAutoUpdateStatus: (): Promise<UpdateCheckResult | null> =>
+    ipcRenderer.invoke('app:autoUpdateStatus'),
+  onUpdateAvailable: (handler: (result: UpdateCheckResult) => void): (() => void) => {
+    const listener = (_event: unknown, result: UpdateCheckResult): void => handler(result)
+    ipcRenderer.on('app:updateAvailable', listener)
+    return () => {
+      ipcRenderer.removeListener('app:updateAvailable', listener)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('vrcbw', api)
