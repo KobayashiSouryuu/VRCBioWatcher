@@ -214,6 +214,14 @@ export type ScanMessageCode =
   /** 拿到的名单自相矛盾，跳过了"解除好友"判定，避免造出几百条假记录 */
   | 'relationCheckSkipped'
   /**
+   * 扫描途中账号被切换（退出登录 / 换了另一个账号）—— 立即中止本轮。
+   *
+   * 为什么必须中止：扫描手里的数据属于**开始时那个账号**，而存盘写的是
+   * "此刻登录的账号"的目录；换号后继续跑就会把 A 的数据写进 B 的目录
+   * （B 的数据被覆盖、界面显示 A 的好友）。见 watcher.ts 的 saveScanStore。
+   */
+  | 'accountSwitched'
+  /**
    * 上一次扫描**没跑完**就被中断了（进程被杀 / 断电 / 在扫描中途退出）。
    *
    * 为什么需要：好友资料是边扫边存的，所以中断会留下一份**部分更新**的数据，
@@ -281,6 +289,14 @@ export interface ScanSummary {
    * 界面用它显示"上一轮扫描出问题了"的醒目提示（概览横幅 + 侧栏标记）。
    */
   lastScanWarning: ScanWarning | null
+  /**
+   * 本地数据文件读取失败的原因（null = 正常）。
+   *
+   * 触发场景：store.json / store.bin 损坏或解不开。此时程序会把它改名备份、
+   * 再以空数据继续运行 —— 界面必须把这件事**明确告诉用户**，
+   * 否则用户只会觉得"我的记录莫名其妙全没了"。
+   */
+  dataLoadError: string | null
   /** 冷却期还剩多少分钟（0 表示不在冷却期） */
   cooldownMinutesLeft: number
 

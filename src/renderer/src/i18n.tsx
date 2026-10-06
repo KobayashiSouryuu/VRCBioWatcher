@@ -383,11 +383,20 @@ const zh = {
     '拿到的好友名单自相矛盾，已跳过本轮的「解除好友」判定，避免产生假记录。',
   scanInterrupted:
     '上一次扫描**没跑完就被中断了**（进度 {done}/{total} 个好友）。好友简介是**边扫边存**的，所以那部分数据已经写进列表了；但「上次扫描时间」和「变化数」只在整轮跑完时才更新 —— **界面显示的仍是上一次完整扫描的数字**。建议现在重新扫描一次把它补齐。',
+  scanAccountSwitched:
+    '扫描途中检测到**账号被切换**（退出登录或换了账号），已立即中止本轮扫描 —— 这是为了防止把上一个账号的数据写进当前账号。**数据没有被破坏**，需要的话重新扫描即可。',
 
   // --- 概览页：上一轮扫描异常横幅 ---
   warningTitle: '上一轮扫描出现了问题',
   warningDismiss: '知道了',
   warningAt: '发生时间：{time}',
+
+  // --- 数据文件损坏（fatal，比扫描异常严重）---
+  dataErrorTitle: '本地数据文件读取失败',
+  dataErrorBody:
+    '你的本地数据文件（好友资料 + 变化记录）这次**读不出来**，程序已经把它改名备份、并以空数据继续运行 —— **原文件没有被覆盖，也没有丢失**。',
+  dataErrorHint:
+    '如果你希望找回数据：备份文件的路径就在上面那行里，可以自己打开看看（内容可能是损坏的）。要帮忙定位原因的话，把上面那行的信息发到 Issue 里即可。也可以直接重新扫描，从今天开始重新记录。',
 
   // --- 侧栏：有新版本入口 ---
   updateAvailable: '有新版本 {version}',
@@ -719,10 +728,18 @@ const ja: Record<TKey, string> = {
     '取得したフレンドリストが矛盾していたため、今回の「フレンド解除」判定をスキップしました（誤った記録を防ぐため）。',
   scanInterrupted:
     '前回のスキャンは**最後まで完了せず中断されました**（進捗 {done}/{total} 人）。プロフィールは取得のたびに保存されるため、その分は既に一覧に反映されています。ただし「前回のスキャン時刻」と「変更数」は最後まで完走した時にだけ書き込まれるため、**表示は前回完了したスキャンのまま**です。今すぐ再スキャンして補完することをおすすめします。',
+  scanAccountSwitched:
+    'スキャン中に**アカウントの切り替え**を検出したため、今回のスキャンを直ちに中止しました（前のアカウントのデータを現在のアカウントに書き込まないため）。**データは破損していません**。必要なら再スキャンしてください。',
 
   warningTitle: '前回のスキャンで問題が発生しました',
   warningDismiss: '閉じる',
   warningAt: '発生時刻：{time}',
+
+  dataErrorTitle: 'ローカルデータを読み込めませんでした',
+  dataErrorBody:
+    'ローカルのデータファイル（フレンド情報と変更履歴）を**読み込めなかった**ため、プログラムはファイルを別名でバックアップし、空のデータで続行しました —— **元のファイルは上書きされておらず、失われてもいません**。',
+  dataErrorHint:
+    '復元したい場合は、上の行に表示されているバックアップのパスを確認してください（内容が壊れている可能性があります）。原因の調査に協力いただける場合は、その行の情報を Issue に貼ってください。再スキャンして今日から記録をやり直すこともできます。',
 
   updateAvailable: '新しいバージョン {version}',
   updateAvailableTitle: '新しいバージョン {version} があります —— クリックで GitHub のリリースページを開きます',
@@ -1052,10 +1069,18 @@ const en: Record<TKey, string> = {
     'The friend list we received was self-contradictory, so the “friendship ended” check was skipped for this round to avoid creating false records.',
   scanInterrupted:
     'The previous scan was **interrupted before it finished** (progress {done}/{total} friends). Profiles are saved as they are fetched, so that partial data is already in the list — but “last scan time” and the change count are only written when a scan runs to completion, so those still show the **last complete scan**. Re-scanning now is recommended to fill the gap.',
+  scanAccountSwitched:
+    'The account was switched while this scan was running (logout or a different account), so the scan was aborted immediately — this prevents the previous account’s data from being written into the current one. **No data was corrupted**; just re-scan if you need to.',
 
   warningTitle: 'The last scan had a problem',
   warningDismiss: 'Dismiss',
   warningAt: 'Happened at: {time}',
+
+  dataErrorTitle: 'Could not read your local data',
+  dataErrorBody:
+    'Your local data file (friend profiles + change history) could **not be read** this time. The program renamed it to a backup and continued with empty data — **the original file was not overwritten and is not lost**.',
+  dataErrorHint:
+    'To try to recover it, open the backup path shown above (its contents may be damaged). If you want to help diagnose the cause, paste that line into an issue. You can also just re-scan and start recording again from today.',
 
   updateAvailable: 'Version {version} available',
   updateAvailableTitle: 'Version {version} is available — click to open the GitHub release page',
@@ -1129,6 +1154,12 @@ const SCAN_MSG_KEYS: Record<ScanMessageCode, TKey> = {
   doneMostlyFailed: 'scanDoneMostlyFailed',
   relationCheckSkipped: 'scanRelationSkipped',
   scanInterrupted: 'scanInterrupted',
+  /*
+   * ⚠ accountSwitched 是"扫描被中止"，不是"上一轮扫描有问题"的横幅内容，
+   *   所以它只出现在进度提示里（scanMessage），不进 lastScanWarning。
+   *   这里也给它一个键，避免 SCAN_MSG_KEYS 缺项编译不过。
+   */
+  accountSwitched: 'scanAccountSwitched',
 }
 
 /** 把主进程给的扫描状态渲染成当前语言的文案 */

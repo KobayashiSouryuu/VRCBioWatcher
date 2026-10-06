@@ -45,6 +45,7 @@ import {
   defaultDataRoot,
   eventCount,
   getActiveAccount,
+  getDataLoadError,
   loadStore,
   makeEventId,
   moveDataRoot,
@@ -638,6 +639,18 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('auth:logout', async () => {
     console.log('[auth] 收到退出登录请求')
+    /*
+     * ★ 先停正在跑的扫描，再切账号。
+     *
+     * 为什么顺序和必要性都很重要：扫描手里的数据属于"开始时那个账号"，
+     * 而所有存盘都写"此刻登录的账号"的目录。换号之后旧扫描继续跑，
+     * 就会把上一个账号的数据写进新账号的目录（B 的数据被覆盖、界面显示 A 的好友）。
+     * 以前这里只 stopScheduler()（停的是**下一次**自动扫描的定时器），
+     * 对正在跑的那一轮毫无作用。
+     *
+     * watcher 内部还有一道 saveScanStore 校验兜底，两道一起才稳妥。
+     */
+    watcher.requestStop()
     const state = syncActiveAccount(await auth.logout())
     // 退出后取消待执行的自动扫描，否则会用一个已失效的会话去请求
     stopScheduler()
@@ -665,6 +678,11 @@ function registerIpcHandlers(): void {
       eventCount: eventCount(),
       lastRateLimitAt: store.lastRateLimitAt,
       lastScanWarning: store.lastScanWarning,
+      /*
+       * 数据文件读取失败的通知（见 db.ts 的 quarantineFile）。
+       * 这是**内存里**的状态，不来自 store —— 因为它的触发场景就是"store 读不出来"。
+       */
+      dataLoadError: getDataLoadError(),
       cooldownMinutesLeft: watcher.getCooldown().minutesLeft,
       // ★ 未登录时这两个都是 null，界面据此渲染「请先登录」而不是空列表
       accountId: getActiveAccount(),

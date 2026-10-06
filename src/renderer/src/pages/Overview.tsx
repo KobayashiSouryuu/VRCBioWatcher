@@ -77,6 +77,18 @@ export function Overview({
   const [warningDismissed, setWarningDismissed] = useState(false)
   const showWarning = loggedIn && warning !== null && !warningDismissed
 
+  /*
+   * ★ 本地数据文件读取失败的横幅（fatal 级别，比扫描异常严重得多）。
+   *
+   * 场景：store.json 损坏 → 主进程把它改名备份、以空数据继续跑。
+   * 如果不显眼地告诉用户，他只会看到"好友和变化记录全没了"，
+   * 然后以为是我们把数据弄丢了 —— 实际上原文件就在备份路径里。
+   * 同样用"本次会话可关闭"的方式，不持久化。
+   */
+  const dataError = summary?.dataLoadError ?? null
+  const [dataErrorDismissed, setDataErrorDismissed] = useState(false)
+  const showDataError = loggedIn && dataError !== null && !dataErrorDismissed
+
   return (
     <>
       {!loggedIn ? (
@@ -88,6 +100,24 @@ export function Overview({
           onCancelTwoFactor={onCancelTwoFactor}
           onLogout={onLogout}
         />
+      ) : null}
+
+      {/*
+        ★★ 数据文件损坏横幅。放在扫描异常横幅**之前** —— 数据读不出来是更严重的事。
+      */}
+      {showDataError && dataError ? (
+        <section className="card warning-card">
+          <div className="card-head-row">
+            <h2>⚠ {t('dataErrorTitle')}</h2>
+            <button type="button" className="ghost" onClick={() => setDataErrorDismissed(true)}>
+              {t('warningDismiss')}
+            </button>
+          </div>
+          <p>{t('dataErrorBody')}</p>
+          {/* 原样显示主进程给的原因和备份路径（这是最关键的定位信息） */}
+          <p className="muted mono">{dataError}</p>
+          <p className="muted">{t('dataErrorHint')}</p>
+        </section>
       ) : null}
 
       {/*

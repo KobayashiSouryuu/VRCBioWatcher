@@ -40,6 +40,15 @@ const MIN_INTERVAL_MS = 1000
  */
 const RETRY_ON_429 = 0
 
+/**
+ * 单次请求的超时时间（毫秒）。
+ *
+ * 为什么要有它、为什么是 15 秒：见 request() 里 fetch 那段注释。
+ * 概要：没有它，卡住的连接会挂到 Node 的默认超时（约 300 秒），
+ * 而且"卡住"不算失败 → 连续失败熔断形同虚设。
+ */
+export const REQUEST_TIMEOUT_MS = 15_000
+
 export interface ApiResult {
   status: number
   json: unknown
@@ -129,9 +138,30 @@ export class VrchatClient {
           method,
           headers,
           body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          /*
+           * ★ 单次请求超时。
+           *
+           * 为什么必须有：不设的话，遇到"连得上但一直不回"的中间层（代理切节点、
+           * 防火墙丢包）时，这里会一直挂着 —— 底层 fetch 的默认超时是 undici 的
+           * headersTimeout，约 300 秒。后果有两个：
+           *   1. 一轮扫描可能卡几十分钟，用户看着进度条不动
+           *   2. **更糟**：卡住不算"失败"，所以"连续失败熔断"根本不会触发，
+           *      只能干等到超时为止
+           *
+           * 而且它还有一个安全副作用：超时把"一轮请求卡住"的窗口从几分钟缩到
+           * 十几秒，跨账号切换时数据串号的风险窗口也跟着变小（见 watcher.ts 的账号校验）。
+           *
+           * 15 秒是权衡后的取值：正常 profile 请求在几百毫秒级，15 秒足够宽松，
+           * 又不会让用户等太久。超时会被上层当作"可重试的临时失败"处理。
+           */
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         })
       } catch (err) {
-        // 网络层失败（断网、DNS、超时）。不重试，直接把原因交上去。
+        /*
+         * 网络层失败（断网、DNS、超时）。这里**不重试** —— 重试由上层
+         * （扫描器）按"同一个好友最多试几次"的节奏统一决定，这样重试之间的
+         * 间隔也走同样的匀速规则，不会在本层形成突发。
+         */
         const reason = err instanceof Error ? err.message : String(err)
         throw new Error(`无法连接 VRChat API：${reason}`)
       }

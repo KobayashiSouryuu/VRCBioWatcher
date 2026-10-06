@@ -83,6 +83,29 @@ export interface Store {
    */
   lastScanAttemptAt: string | null
   /**
+   * 上一次扫描**中途失败退出**的时间（网络中断 / 会话失效 / 连续失败熔断）。
+   *
+   * 为什么要和 lastScanAt 分开：
+   *   - `lastScanAt` 的语义是"最近一次**跑完**的扫描"，界面上的"上次扫描时间"、
+   *     以及"手动扫描 2 小时间隔"都拿它当基准
+   *   - 一轮扫描因为网络抖动中途夭折，**不该**被当成"完成了一轮" ——
+   *     否则用户切个代理节点就要干等 2 小时才能重试（用户实测反馈过）
+   *
+   * 所以中断时只写这个字段，并据此给一个**很短的**重试冷却（15 分钟），
+   * 既让用户能很快重试，又不会被"连点重试"变成请求风暴。
+   */
+  lastAbortAt: string | null
+  /**
+   * 「基线是否已经建立」—— 独立字段，不再借 `lastScanAt` 兼职判断。
+   *
+   * 为什么要单独记：首轮扫描的语义是"只建立基线，不产生任何变化记录"，
+   * 否则第一轮会塞进几百条噪音。以前是靠 `lastScanAt === null` 推断的，
+   * 但中断路径也会写 `lastScanAt`，于是"首轮扫到一半断了"会让第二轮
+   * 误以为已有基线 → 每个还没记录过的好友都生成一条假的「新好友」。
+   * 现在只有**完整跑完**一轮才置位。
+   */
+  baselineReady: boolean
+  /**
    * 当前是否有一轮扫描**正在跑**：非空 = 开始时间。
    *
    * 为什么需要它：好友资料是**边扫边存**的，所以"扫到一半被中断"会留下一份
@@ -119,6 +142,8 @@ export function emptyStore(): Store {
     lastScanAt: null,
     lastScanStats: null,
     lastScanAttemptAt: null,
+    lastAbortAt: null,
+    baselineReady: false,
     scanStartedAt: null,
     scanProgress: null,
     lastRateLimitAt: null,
@@ -199,6 +224,9 @@ function migrateLegacyData(): boolean {
       lastScanStats: legacy.lastScanStats ?? null,
       // 旧格式没有这个字段：把完成时间当作尝试时间，语义上最接近
       lastScanAttemptAt: legacy.lastScanAt ?? null,
+      // 旧格式：有完成时间就说明基线建过了
+      baselineReady: Boolean(legacy.lastScanAt),
+      lastAbortAt: null,
       // 旧格式不可能"正好在扫描中途"：一律当作没有进行中的扫描
       scanStartedAt: null,
       scanProgress: null,
@@ -434,6 +462,13 @@ function normalizeStore(parsed: Partial<Store> | null): Store {
     lastScanAt: parsed.lastScanAt ?? null,
     lastScanStats: parsed.lastScanStats ?? null,
     lastScanAttemptAt: parsed.lastScanAttemptAt ?? null,
+    lastAbortAt: parsed.lastAbortAt ?? null,
+    /*
+     * 兼容老数据：以前没有 baselineReady，但只要有 lastScanAt 就说明
+     * 至少跑完过一轮（中断路径虽然也会写 lastScanAt，但那属于历史遗留，
+     * 这里按"conservative = 认为基线已建立"处理，避免老用户突然被当成首轮）。
+     */
+    baselineReady: typeof parsed.baselineReady === 'boolean' ? parsed.baselineReady : Boolean(parsed.lastScanAt),
     scanStartedAt: parsed.scanStartedAt ?? null,
     scanProgress: parsed.scanProgress ?? null,
     lastRateLimitAt: parsed.lastRateLimitAt ?? null,
@@ -462,10 +497,10 @@ export function loadStore(): Store {
       return cache
     }
   } catch (err) {
-    console.warn(
-      '[data] 加密数据无法解密（换了 Windows 账户，或加密开关与文件不匹配？），将当作空数据：',
-      err instanceof Error ? err.message : err,
-    )
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn('[data] 加密数据无法解密，将当作空数据：', msg)
+    // ★ 先把坏文件挪走再继续：否则下一次 saveStore 会原子覆盖它，数据永远找不回来
+    quarantineFile(encrypted, `加密数据无法解密：${msg}`)
     cache = emptyStore()
     return cache
   }
@@ -476,11 +511,60 @@ export function loadStore(): Store {
       return cache
     }
   } catch (err) {
-    console.warn('[data] 数据文件损坏，将当作空数据：', err instanceof Error ? err.message : err)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn('[data] 数据文件损坏，将当作空数据：', msg)
+    /*
+     * ★★ 关键一步：把损坏的文件**改名保留**，而不是留着让下一次存盘覆盖它。
+     *
+     * 修的是这个隐患：以前这里只打一行 warn 就当成空数据，而紧接着任何一次
+     * saveStore()（扫描、改设置、启动检测……）都会用空 store **原子覆盖**原文件 ——
+     * 结果是"好友历史全部消失，而且全程没有任何提示"，用户只会觉得数据莫名其妙没了。
+     * 现在坏文件被改名留证，并且界面上会明确报错（见 dataLoadError）。
+     */
+    quarantineFile(plain, `数据文件损坏：${msg}`)
   }
 
   cache = emptyStore()
   return cache
+}
+
+/**
+ * 最近一次数据加载失败的原因（给界面显示用）。null = 一切正常。
+ *
+ * 为什么不用 store 里的字段存：这件事发生在"store 读不出来"的时候，
+ * 存进 store 本身没有意义（马上要被覆盖）。所以放在内存里，由主进程
+ * 通过 getScanSummary() 交给界面，界面报错后调用 clear 清掉。
+ */
+let dataLoadError: string | null = null
+
+/**
+ * 读"数据加载失败"的提示（**不清空**）。
+ *
+ * 为什么不清空：界面可能在任何一页被打开，取一次就清掉的话，
+ * 用户如果在别的页面时被取走了，横幅就永远看不到了。
+ * 这个提示只在本次运行内有效（重启后重新读盘，若还坏会再次产生）。
+ */
+export function getDataLoadError(): string | null {
+  return dataLoadError
+}
+
+/**
+ * 把一个读不出来的数据文件改名保留，而不是让它被后续存盘覆盖。
+ *
+ * 命名带时间戳，所以反复出问题也不会互相覆盖；
+ * 失败也不抛异常（改名失败总比整个程序起不来好）。
+ */
+function quarantineFile(file: string, reason: string): void {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const backup = `${file}.corrupt-${stamp}.bak`
+  try {
+    renameSync(file, backup)
+    dataLoadError = `${reason}\n原文件已备份为：${backup}`
+    console.warn(`[data] 已将无法读取的数据文件改名保留：${backup}`)
+  } catch (err) {
+    dataLoadError = `${reason}\n（尝试备份原文件也失败了：${err instanceof Error ? err.message : String(err)}）`
+    console.warn('[data] 备份损坏文件失败：', err instanceof Error ? err.message : err)
+  }
 }
 
 /** 原子写入当前账号的数据。未登录时**什么也不写**。 */
