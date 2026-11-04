@@ -58,17 +58,22 @@
 
 VRC 在 **API v1.21.0** 里把 `bio` / `bioLinks` 从 **WebSocket 推送**中移除了
 （官方维护者原话：*"Bio was removed from the websocket, and thus, are no longer able to
-detect bio changes."*）。
+detect bio changes."*）。同时 bio 也从 `/users/` 移到了 `/profile/`，不能再按 bio 搜索用户。
 
-**VRCX 因此把「Feed Bio Changes」判定为「不可修复」并放弃了这个功能。**
-同时 bio 也从 `/users/` 移到了 `/profile/`，不能再按 bio 搜索用户。
+**这个字段至今没有回到推送里** —— 所以"实时"这条路是走不通的，简介只能靠主动去取。
 
-这个工具就是来补这个缺口的：**既然推送里没有简介，那就定期轮询 `/profile/`，把每次结果留档并对比。**
+VRCX 后来重新加回了「简介变更」记录，它的做法是：**每当程序拿到某个好友的最新资料时，
+就和他的旧简介比对一次**（比如你点开他的资料、或者他刚好在别处被刷新到），
+另外同一个人超过 7 天没被刷新过时会补一次。因为不是定时全量扫描，
+所以能不能看到、什么时候看到，取决于"什么时候恰好又取到了那个好友的数据"。
+
+这个工具走另一条路：**按固定周期把所有好友都扫一遍**，一个不漏地留档并对比。
+代价是最多一个扫描周期的延迟，好处是不依赖"恰好刷新到"。
 
 | | VRCX | 本工具 |
 |---|---|---|
 | 好友管理 / 动态 / 世界信息 | ✅ 功能齐全 | ❌ 不做 |
-| 好友简介变化 | ❌ 判定不可修复 | ✅ **专注做这一件事** |
+| 好友简介变化 | ✅ 已重新支持（在拿到该好友最新资料时比对） | ✅ **定时全量扫描，每个好友都会被扫到** |
 | 加/删好友、改昵称 | ✅ **实时**（WebSocket 广播） | ⚠️ 靠定期扫描发现（见下） |
 
 ---
@@ -354,10 +359,16 @@ Chromium 与 Node.js 内部还包含**数百个第三方组件**，各有其自�
 friends' bios, names and bio links, records every change, and shows a **paragraph-level**
 diff between the old and new versions.
 
-It exists because VRChat **removed `bio` from the WebSocket payload** in API v1.21.0 —
-which is why VRCX declared its "bio changes" feature unfixable. Since bios are no longer
-pushed, they can only be obtained by polling `GET /profile/{userId}`, which is exactly
-what this tool does.
+It exists because VRChat **removed `bio` from the WebSocket payload** in API v1.21.0 — and
+it has not been pushed since. Bios can therefore only be obtained by polling
+`GET /profile/{userId}`.
+
+VRCX has since re-added bio-change tracking: it compares a friend's stored bio whenever it
+happens to receive that friend's fresh profile (e.g. when you open their details), plus a
+refresh for anyone not looked at in 7 days. Because that is not a scheduled full pass,
+whether and when you see a change depends on when that friend's data happens to be fetched
+again. This tool takes the other road: **every friend is scanned on a fixed schedule**, so
+nothing is skipped — at the cost of up to one scan interval of delay.
 
 **⚠ Risk notice**: VRChat has never published its rate-limit (429) threshold, so no one
 can compute a "safe rate". This tool is deliberately conservative — a fixed 3-second gap

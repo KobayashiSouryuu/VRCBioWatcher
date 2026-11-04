@@ -83,6 +83,8 @@ const api: VrcbwApi = {
       ipcRenderer.removeListener('app:updateAvailable', listener)
     }
   },
+  acknowledgeNotice: (kind: 'scanWarning' | 'dataError'): Promise<void> =>
+    ipcRenderer.invoke('app:acknowledgeNotice', kind),
 }
 
 contextBridge.exposeInMainWorld('vrcbw', api)

@@ -314,6 +314,8 @@ export interface ScanSummary {
   requestIntervalSeconds: number
   /** 自动扫描间隔（小时） */
   autoScanIntervalHours: number
+  /** 自动扫描是否启用（关掉后 nextAutoScanAt 恒为 null，界面显示「已关闭」） */
+  autoScanEnabled: boolean
   /** 手动扫描的最小间隔（小时） */
   manualScanMinIntervalHours: number
   /** 触发限流后的强制冷却（小时） */
@@ -409,6 +411,29 @@ export interface AppSettings {
    * 此时用户需要一个自救手段，而不必去设环境变量。
    */
   hardwareAcceleration: boolean
+  /**
+   * 是否启用**自动扫描**。关掉后程序不会自己发起扫描（手动扫描仍然可用）。
+   *
+   * 和 autoScanIntervalHours 分开两个字段，是为了"关闭再打开"时能恢复原来的间隔
+   * （界面上的「关闭自动扫描」选项只是把这一位关掉，不会清掉小时数）。
+   */
+  autoScanEnabled: boolean
+  /**
+   * 自动扫描间隔（小时）。只允许 6 / 8 / 10 / 12，**默认 12**。
+   *
+   * ⚠ 这个值决定"每 N 小时向 VRChat 发一轮请求"，改小 = 请求更频繁。
+   *   12 小时比原来的固定 10 小时更保守（用户要求默认 12）。
+   */
+  autoScanIntervalHours: number
+  /**
+   * 扫描时**每两个好友之间**的间隔（毫秒）。只允许 1000 / 2000 / 3000，**默认 3000**。
+   *
+   * ⚠⚠ 这是本项目最核心的安全参数之一：调小等于更接近限流阈值。
+   *   VRChat 从未公布 429 阈值，官方 FAQ 明确说无视 429 可能导致更长限流甚至封停。
+   *   为什么还是做成可调：用户要求给 1s/2s/3s 三个选项（有些人好友少、想快点扫完），
+   *   但默认值仍然是 3 秒。**改小它之前请先读 docs/DECISIONS.md 3.5。**
+   */
+  friendRequestIntervalMs: number
   /**
    * 上次关闭时的窗口位置与大小；null = 还没记录过（首次启动用默认值并居中）。
    *
@@ -515,4 +540,19 @@ export interface VrcbwApi {
   getAutoUpdateStatus(): Promise<UpdateCheckResult | null>
   /** 订阅「自动检查发现新版本」事件（检查完成时推送一次） */
   onUpdateAvailable(handler: (result: UpdateCheckResult) => void): () => void
+  /**
+   * 确认（关闭）一条提示，让它**真正消失**。
+   *
+   * ## 为什么需要这个 IPC
+   *
+   * 「知道了」以前只是把界面上的一个 useState 置 true —— 而 useState 活在组件里：
+   * 只要 Overview 被卸载再挂载（**切到别的页面再切回来**、或者重新登录），
+   * 那个 state 就没了，横幅原样回来 ✗ 用户看到的现象就是"点了没用"。
+   *
+   * 所以关闭动作必须落到**数据**上：
+   *   - `scanWarning`：清掉 store.lastScanWarning（侧栏那个"!"标记也一起消失）
+   *   - `dataError`  ：清掉主进程内存里的数据加载错误
+   * 清掉之后，界面下次刷新 summary 就真的没有这条了。
+   */
+  acknowledgeNotice(kind: 'scanWarning' | 'dataError'): Promise<void>
 }

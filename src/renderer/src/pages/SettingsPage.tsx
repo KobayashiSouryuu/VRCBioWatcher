@@ -8,7 +8,7 @@ import type {
   SystemInfo,
   ThemePreference,
 } from '@shared/types'
-import { fontExists, formatTime } from '../lib'
+import { fontExists } from '../lib'
 import { LANGS, rich, useI18n, type TKey } from '../i18n'
 
 /** 顺序是用户指定的：系统 → 浅色 → 深色 */
@@ -17,6 +17,16 @@ const THEME_OPTIONS: { value: ThemePreference; labelKey: TKey }[] = [
   { value: 'light', labelKey: 'themeLight' },
   { value: 'dark', labelKey: 'themeDark' },
 ]
+
+/*
+ * 「扫描」设置的可选项。
+ *
+ * ⚠ 这两组值必须和主进程 settings.ts 里的白名单一致（AUTO_SCAN_HOURS /
+ *   FRIEND_INTERVAL_MS）。主进程会对非法值回退默认，所以就算这里手滑写错
+ *   也不会真把间隔设成几毫秒 —— 但两边保持一致才不会出现"点了没反应"。
+ */
+const AUTO_SCAN_HOUR_OPTIONS = [6, 8, 10, 12] as const
+const FRIEND_INTERVAL_OPTIONS_MS = [1000, 2000, 3000] as const
 
 /** 设置页 */
 export function SettingsPage({
@@ -46,6 +56,12 @@ export function SettingsPage({
   onMinimizeToTrayChange,
   hardwareAcceleration,
   onHardwareAccelerationChange,
+  autoScanEnabled,
+  onAutoScanEnabledChange,
+  autoScanIntervalHours,
+  onAutoScanIntervalHoursChange,
+  friendRequestIntervalMs,
+  onFriendRequestIntervalChange,
   summary,
   info,
   openResult,
@@ -85,6 +101,13 @@ export function SettingsPage({
   onMinimizeToTrayChange: (value: boolean) => void
   hardwareAcceleration: boolean
   onHardwareAccelerationChange: (value: boolean) => void
+  /** 扫描节奏（新增的「扫描」分组） */
+  autoScanEnabled: boolean
+  onAutoScanEnabledChange: (value: boolean) => void
+  autoScanIntervalHours: number
+  onAutoScanIntervalHoursChange: (value: number) => void
+  friendRequestIntervalMs: number
+  onFriendRequestIntervalChange: (value: number) => void
   summary: ScanSummary | null
   info: SystemInfo | null
   openResult: string | null
@@ -99,12 +122,8 @@ export function SettingsPage({
   onClearTest: () => void
   onInject: (kind: 'bio' | 'friendAdded' | 'friendRemoved') => void
 }): JSX.Element {
-  const { t, locale } = useI18n()
+  const { t } = useI18n()
   const loggedIn = auth?.status === 'logged-in'
-  const cooldown = summary?.cooldownMinutesLeft ?? 0
-  const intervalSec = summary?.requestIntervalSeconds ?? 3
-  const friendCount = summary?.friendCount ?? 0
-  const estimateMinutes = Math.max(1, Math.ceil((friendCount * (intervalSec + 0.3)) / 60))
   const encryptionAvailable = info?.safeStorageAvailable ?? false
 
   /* --- 数据位置（自包含在这里，不必让 App 知道）--- */
@@ -165,62 +184,6 @@ export function SettingsPage({
 
   return (
     <>
-      <section className="card risk-note">
-        <h2>{t('pacingTitle')}</h2>
-
-        {friendCount > 0 ? (
-          <p>
-            {rich(
-              t('scanEstimate', {
-                count: friendCount,
-                seconds: intervalSec,
-                minutes: estimateMinutes,
-              }),
-            )}
-          </p>
-        ) : null}
-        <p>{rich(t('scanLongWarning'))}</p>
-        <p className="preline">
-          {rich(
-            t('scanScheduleNote', {
-              hours: summary?.autoScanIntervalHours ?? 10,
-              manualHours: summary?.manualScanMinIntervalHours ?? 2,
-            }),
-          )}
-        </p>
-        <p>
-          {rich(t('scanRateLimitNote', { cooldownHours: summary?.rateLimitCooldownHours ?? 10 }))}
-        </p>
-
-        <p className="muted">
-          {summary?.nextAutoScanAt
-            ? t('nextAutoScanNote', { time: formatTime(summary.nextAutoScanAt, locale) })
-            : t('nextAutoScanNone')}
-        </p>
-        {cooldown > 0 ? (
-          <p className="status-line error">
-            {t('scanCooldown', {
-              minutes: cooldown,
-              hours: summary?.rateLimitCooldownHours ?? 10,
-            })}
-            {summary?.lastRateLimitAt ? `（${formatTime(summary.lastRateLimitAt, locale)}）` : ''}
-          </p>
-        ) : summary?.lastRateLimitAt ? (
-          <p className="status-line">
-            {t('riskLastLimited', { time: formatTime(summary.lastRateLimitAt, locale) })}
-          </p>
-        ) : (
-          <p className="status-line">{t('riskNeverLimited')}</p>
-        )}
-
-        {/* 429 时的行动指引：去 GitHub 反馈 + 建议停用 */}
-        <p>{rich(t('riskReportNote'))}</p>
-        <p className="muted">{rich(t('logNote'))}</p>
-
-        {/* 数据来源说明：所有变化都来自扫描，与 VRCX 不同 */}
-        <p className="muted preline">{rich(t('dataSourceNote'))}</p>
-      </section>
-
       <section className="card">
         <h2>{t('appearanceTitle')}</h2>
 
@@ -365,6 +328,64 @@ export function SettingsPage({
             {t('showRemovedLabel')}
           </label>
           <p className="muted">{t('showRemovedNote')}</p>
+        </div>
+      </section>
+
+      {/* --- 扫描（自动扫描间隔 / 扫描好友间隔） --- */}
+      <section className="card">
+        <h2>{t('scanSettingsTitle')}</h2>
+
+        <div className="row">
+          <div className="row-label">{t('autoScanIntervalLabel')}</div>
+          <div className="row-value">
+            <div className="theme-switch theme-switch-inline">
+              {/*
+                「关闭自动扫描」和几个小时数做成一组单选按钮 —— 和外观页的
+                主题/语言是同一套交互，用户不用学新的操作方式。
+                关闭时只是把 autoScanEnabled 置 false，间隔小时数保留着，
+                重新打开就回到原来的档位。
+              */}
+              <button
+                type="button"
+                className={!autoScanEnabled ? 'active' : ''}
+                onClick={() => onAutoScanEnabledChange(false)}
+              >
+                {t('autoScanOff')}
+              </button>
+              {AUTO_SCAN_HOUR_OPTIONS.map((hours) => (
+                <button
+                  type="button"
+                  key={hours}
+                  className={autoScanEnabled && autoScanIntervalHours === hours ? 'active' : ''}
+                  onClick={() => {
+                    // 点小时数 = 顺便把"启用"打开（否则点了没反应会让人困惑）
+                    onAutoScanEnabledChange(true)
+                    onAutoScanIntervalHoursChange(hours)
+                  }}
+                >
+                  {t('hoursShort', { hours })}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="row">
+          <div className="row-label">{t('friendIntervalLabel')}</div>
+          <div className="row-value">
+            <div className="theme-switch theme-switch-inline">
+              {FRIEND_INTERVAL_OPTIONS_MS.map((ms) => (
+                <button
+                  type="button"
+                  key={ms}
+                  className={friendRequestIntervalMs === ms ? 'active' : ''}
+                  onClick={() => onFriendRequestIntervalChange(ms)}
+                >
+                  {t('secondsShort', { seconds: ms / 1000 })}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

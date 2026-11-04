@@ -35,6 +35,9 @@ const DEFAULTS: AppSettings = {
   startMinimized: false,
   minimizeToTray: true,
   hardwareAcceleration: true,
+  autoScanEnabled: true,
+  autoScanIntervalHours: 12,
+  friendRequestIntervalMs: 3000,
   windowBounds: null,
   windowMaximized: false,
   encryptData: false,
@@ -42,6 +45,17 @@ const DEFAULTS: AppSettings = {
 
 const SORT_KEYS: AppSettings['friendsSortKey'][] = ['friendNumber', 'displayName', 'lastChangedAt']
 const FILTER_KEYS: AppSettings['changesFilter'][] = ['all', 'displayName', 'bio', 'relation']
+
+/*
+ * 扫描节奏的可选值 —— 只接受这几档，其它一律回退默认值。
+ *
+ * 为什么要"白名单"而不是"随便填个数字"：
+ *   - 好友间隔是安全参数，不能让一个手滑输入的 10ms 变成对 VRChat 的洪水请求
+ *   - 自动扫描间隔做成固定几档，界面上是单选按钮，语义清楚
+ * 见 types.ts 里 friendRequestIntervalMs 的注释。
+ */
+const AUTO_SCAN_HOURS = [6, 8, 10, 12]
+const FRIEND_INTERVAL_MS = [1000, 2000, 3000]
 
 /**
  * 校验并修正窗口位置。
@@ -168,6 +182,14 @@ export function loadSettings(): AppSettings {
   if (typeof cache.hardwareAcceleration !== 'boolean') {
     cache.hardwareAcceleration = DEFAULTS.hardwareAcceleration
   }
+  /* 扫描节奏：白名单校验，非法值回退默认（见 AUTO_SCAN_HOURS 的说明） */
+  if (typeof cache.autoScanEnabled !== 'boolean') cache.autoScanEnabled = DEFAULTS.autoScanEnabled
+  if (!AUTO_SCAN_HOURS.includes(cache.autoScanIntervalHours)) {
+    cache.autoScanIntervalHours = DEFAULTS.autoScanIntervalHours
+  }
+  if (!FRIEND_INTERVAL_MS.includes(cache.friendRequestIntervalMs)) {
+    cache.friendRequestIntervalMs = DEFAULTS.friendRequestIntervalMs
+  }
 
   /* 界面状态（排序 / 搜索 / 筛选）与窗口位置：值非法就回退默认，
      免得界面拿到意外值（例如手工改坏 settings.json）。 */
@@ -216,6 +238,13 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
   if (typeof next.minimizeToTray !== 'boolean') next.minimizeToTray = DEFAULTS.minimizeToTray
   if (typeof next.hardwareAcceleration !== 'boolean') {
     next.hardwareAcceleration = DEFAULTS.hardwareAcceleration
+  }
+  if (typeof next.autoScanEnabled !== 'boolean') next.autoScanEnabled = DEFAULTS.autoScanEnabled
+  if (!AUTO_SCAN_HOURS.includes(next.autoScanIntervalHours)) {
+    next.autoScanIntervalHours = DEFAULTS.autoScanIntervalHours
+  }
+  if (!FRIEND_INTERVAL_MS.includes(next.friendRequestIntervalMs)) {
+    next.friendRequestIntervalMs = DEFAULTS.friendRequestIntervalMs
   }
   if (!SORT_KEYS.includes(next.friendsSortKey)) next.friendsSortKey = DEFAULTS.friendsSortKey
   if (typeof next.friendsSortAsc !== 'boolean') next.friendsSortAsc = DEFAULTS.friendsSortAsc

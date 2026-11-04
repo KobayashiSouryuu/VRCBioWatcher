@@ -30,10 +30,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { buildUserAgent } from './user-agent'
 import { AuthManager } from './vrchat/auth'
 import {
-  AUTO_SCAN_INTERVAL_MS,
   MANUAL_SCAN_MIN_INTERVAL_MS,
   RATE_LIMIT_COOLDOWN_MS,
-  REQUEST_INTERVAL_MS,
   Watcher,
 } from './watcher'
 import { loadSettings, saveSettings } from './settings'
@@ -46,6 +44,7 @@ import {
   eventCount,
   getActiveAccount,
   getDataLoadError,
+  clearDataLoadError,
   loadStore,
   makeEventId,
   moveDataRoot,
@@ -689,8 +688,13 @@ function registerIpcHandlers(): void {
       accountDataDir: accountDirPath(),
       nextAutoScanAt: watcher.nextAutoScanAt(),
       manualScanWaitMinutes: watcher.getManualWait().minutesLeft,
-      requestIntervalSeconds: REQUEST_INTERVAL_MS / 1000,
-      autoScanIntervalHours: AUTO_SCAN_INTERVAL_MS / 3600000,
+      /*
+       * 扫描节奏：这两项现在来自**设置**（用户在「设置 → 扫描」里可调），
+       * 不再是常量。界面用它估算耗时、展示"自动扫描每 N 小时"。
+       */
+      requestIntervalSeconds: loadSettings().friendRequestIntervalMs / 1000,
+      autoScanIntervalHours: loadSettings().autoScanIntervalHours,
+      autoScanEnabled: loadSettings().autoScanEnabled,
       manualScanMinIntervalHours: MANUAL_SCAN_MIN_INTERVAL_MS / 3600000,
       rateLimitCooldownHours: RATE_LIMIT_COOLDOWN_MS / 3600000,
     }
@@ -812,6 +816,21 @@ function registerIpcHandlers(): void {
       console.log(`[settings] 本地数据加密已${next.encryptData ? '开启' : '关闭'}，数据已重写`)
     }
     console.log(`[settings] 已更新：${JSON.stringify(patch)}`)
+    /*
+     * ★ 扫描节奏相关的设置变了 → 立刻重排自动扫描定时器。
+     *
+     * 为什么必须重排：定时器是按旧间隔算好的绝对时间。
+     * 如果用户把 12 小时改成 6 小时，不重排的话这一次仍然会等到 12 小时才扫，
+     * 用户会以为设置没生效。同理，关掉自动扫描也必须立刻清掉旧定时器。
+     */
+    if (
+      patch.autoScanEnabled !== undefined ||
+      patch.autoScanIntervalHours !== undefined ||
+      patch.friendRequestIntervalMs !== undefined
+    ) {
+      console.log('[settings] 扫描节奏有变化，重排自动扫描')
+      scheduleNextScan()
+    }
     return next
   })
 
@@ -857,6 +876,29 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('app:checkUpdate', async (): Promise<UpdateCheckResult> => checkForUpdate())
   ipcMain.handle('app:autoUpdateStatus', (): UpdateCheckResult | null => autoUpdateResult)
+
+  /*
+   * 「知道了」：把提示真正消掉（而不是只在界面里藏一下）。
+   *
+   * 为什么必须落到数据上：界面上的 useState 会随组件卸载而丢失 ——
+   * 用户切到别的页面再切回来、或者重新登录，横幅就原样回来了，
+   * 看起来就像"按了没用"。清在源头之后，任何一次刷新都不会再出现。
+   */
+  ipcMain.handle('app:acknowledgeNotice', async (_event, kind: string): Promise<void> => {
+    if (kind === 'scanWarning') {
+      const store = loadStore()
+      if (store.lastScanWarning) {
+        store.lastScanWarning = null
+        saveStore(store)
+        console.log('[ui] 用户已确认上一轮扫描的异常提示，已清除')
+      }
+      return
+    }
+    if (kind === 'dataError') {
+      clearDataLoadError()
+      console.log('[ui] 用户已确认数据读取失败的提示，已清除')
+    }
+  })
 
   ipcMain.handle('app:openExternal', async (_event, url: string): Promise<boolean> => {
     /*
@@ -1153,6 +1195,18 @@ function scheduleNextScan(): void {
 
   if (auth.getState().status !== 'logged-in') {
     console.log('[scheduler] 未登录，不排定自动扫描')
+    return
+  }
+
+  /*
+   * ★ 用户关掉了自动扫描：一个定时器都不留。
+   *
+   * 放在"未登录"判断之后、冷却判断之前 —— 关掉自动扫描就没有必要再为
+   * 冷却期排一个"稍后重新评估"的定时器了（那会白白唤醒一次）。
+   * 设置里重新打开时，settings:update 会再调一次这个函数把定时器排上。
+   */
+  if (!loadSettings().autoScanEnabled) {
+    console.log('[scheduler] 自动扫描已被用户关闭，不排定')
     return
   }
 

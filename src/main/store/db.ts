@@ -549,6 +549,16 @@ export function getDataLoadError(): string | null {
 }
 
 /**
+ * 用户点过「知道了」之后清掉这条提示。
+ *
+ * 不清的话它会跟着每一次 getScanSummary 回来 —— 界面上的横幅就会"关不掉"
+ * （切页面再切回来又出现），这正是用户反馈的那个 bug。
+ */
+export function clearDataLoadError(): void {
+  dataLoadError = null
+}
+
+/**
  * 把一个读不出来的数据文件改名保留，而不是让它被后续存盘覆盖。
  *
  * 命名带时间戳，所以反复出问题也不会互相覆盖；

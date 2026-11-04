@@ -1,6 +1,7 @@
 import type { AuthManager } from './vrchat/auth'
 import { VrchatClient } from './vrchat/client'
 import { fingerprintOf, getActiveAccount, loadStore, makeEventId, saveStore, type Store } from './store/db'
+import { loadSettings } from './settings'
 import type {
   ChangeField,
   FriendRecord,
@@ -43,13 +44,17 @@ import type {
  * 一见 429 立刻中断整轮（不重试、不跳过），并进入 **10 小时**冷却期。
  */
 
-/** 好友之间的请求间隔。这是安全下限，不要为了"快一点"改小。 */
-export const REQUEST_INTERVAL_MS = 3000
+/*
+ * 好友间隔与自动扫描间隔**不再是常量**：用户可以在设置里调
+ * （好友间隔 1/2/3 秒、自动扫描 6/8/10/12 小时）。默认值定义在 settings.ts：
+ *   friendRequestIntervalMs: 3000
+ *   autoScanIntervalHours:   12
+ * 白名单校验也在那里，所以这里拿到的值一定合法。
+ *
+ * 唯一仍然是常量的是「手动扫描最小间隔」和「429 冷却」—— 它们不是用户能调的东西。
+ */
 
-/** 自动扫描间隔：10 小时（从**扫描完成**时刻开始计时） */
-export const AUTO_SCAN_INTERVAL_MS = 10 * 60 * 60 * 1000
-
-/** 手动扫描的最小间隔：2 小时（同样从扫描完成时刻开始计时） */
+/** 手动扫描的最小间隔：2 小时（从扫描完成时刻开始计时） */
 export const MANUAL_SCAN_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000
 
 /**
@@ -84,7 +89,7 @@ const MAX_CONSECUTIVE_FAILURES = 10
  *   2. **401 绝不重试**（会话失效，再试也是白试，直接中断）
  *   3. **403/404 绝不重试**（私密资料 / 账号已注销，是永久性结果）
  * 只有"临时性失败"（网络异常、超时、5xx）才重试，而且每次重试之间
- * 仍走同样的匀速间隔（REQUEST_INTERVAL_MS），不会形成突发。
+ * 仍走同样的匀速间隔（reqIntervalMs，见设置里的「扫描好友间隔」），不会形成突发。
  */
 const PROFILE_MAX_ATTEMPTS = 3
 
@@ -224,20 +229,25 @@ export class Watcher {
   }
 
   /**
-   * 下次自动扫描的时间（ISO）；从未扫描过则返回 null（首次要用户手动点）。
+   * 下次自动扫描的时间（ISO）；从未扫描过、或**用户关掉了自动扫描**时返回 null。
    *
    * ⚠ 计时基准取 `max(lastScanAt, lastScanAttemptAt)`：
    *   - `lastScanAt`（完成）—— 用户要求「按最后一次扫描**结束**的时间算，无论怎么扫的」
    *   - `lastScanAttemptAt`（尝试）—— 防止**失败后立刻重试**形成请求风暴，见 db.ts 的说明
+   *
+   * ⚠ 间隔来自设置（6/8/10/12 小时，默认 12），不再是固定常量。
    */
   nextAutoScanAt(): string | null {
+    const settings = loadSettings()
+    if (!settings.autoScanEnabled) return null
     const store = loadStore()
     const times = [store.lastScanAt, store.lastScanAttemptAt]
       .filter((x): x is string => typeof x === 'string')
       .map((x) => new Date(x).getTime())
       .filter((t) => Number.isFinite(t))
     if (times.length === 0) return null
-    return new Date(Math.max(...times) + AUTO_SCAN_INTERVAL_MS).toISOString()
+    const intervalMs = settings.autoScanIntervalHours * 60 * 60 * 1000
+    return new Date(Math.max(...times) + intervalMs).toISOString()
   }
 
   /** 距离下次自动扫描还有多少毫秒；到期返回 0，从未扫描过返回 null */
@@ -247,9 +257,15 @@ export class Watcher {
     return Math.max(0, new Date(next).getTime() - Date.now())
   }
 
-  /** 自动扫描的准入条件：已登录、不在扫描中、不在冷却期、并且确实到期了 */
+  /**
+   * 自动扫描的准入条件：已登录、**用户没关掉自动扫描**、不在扫描中、不在冷却期、并且确实到期了。
+   *
+   * 第一道（autoScanEnabled）是必须的：主进程的定时器也走这个判断，
+   * 所以关掉自动扫描之后，即使旧定时器还在，也不会真的发起扫描。
+   */
   shouldAutoScan(loggedIn: boolean): boolean {
     if (!loggedIn || this.running) return false
+    if (!loadSettings().autoScanEnabled) return false
     if (this.getCooldown().blocked) return false
     const left = this.msUntilAutoScan()
     return left !== null && left <= 0
@@ -431,6 +447,14 @@ export class Watcher {
     const authState = this.auth.getState()
     const activeAccount = getActiveAccount()
     const store: Store = loadStore()
+
+    /*
+     * 每个好友之间的请求间隔 —— 来自设置（1 / 2 / 3 秒，默认 3 秒）。
+     *
+     * 在**扫描开始时读一次**并固定下来：这样用户在扫描中途改设置，
+     * 不会让正在跑的这轮忽快忽慢（节奏突变本身就可能被限流器注意到）。
+     */
+    const reqIntervalMs = loadSettings().friendRequestIntervalMs
 
     // ★ 先记录"尝试过"，再开始干活。
     //   放在最前面是为了覆盖所有提前返回的失败路径（拉名单失败、好友为空等）：
@@ -631,11 +655,11 @@ export class Watcher {
        * 目的：出问题时他只要把这一段贴出来，就能判断是限流、权限、
        *       还是别的原因 —— 而不是只有一句"出错了"。
        * ───────────────────────────────────────────────────────────────── */
-      const estimatedMinutes = Math.ceil((ordered.length * (REQUEST_INTERVAL_MS + 300)) / 60000)
+      const estimatedMinutes = Math.ceil((ordered.length * (reqIntervalMs + 300)) / 60000)
       this.logBlock('扫描开始', [
         ['账号', `${authState.self?.displayName ?? '(未知)'} (${activeAccount ?? '(未登录)'})`],
         ['好友总数', `${allIds.length}（在线/活跃 ${tier1.length} / 离线 ${tier2.length} / 兜底 ${tier3.length}）`],
-        ['请求间隔', `${REQUEST_INTERVAL_MS / 1000} 秒/人`],
+        ['请求间隔', `${reqIntervalMs / 1000} 秒/人`],
         ['预计耗时', `约 ${estimatedMinutes} 分钟`],
         ['触发方式', options.auto ? '自动（定时）' : '手动'],
         ['限流冷却', this.getCooldown().blocked ? `冷却中，剩 ${this.getCooldown().minutesLeft} 分钟` : '正常'],
@@ -694,7 +718,7 @@ export class Watcher {
 
         // ★ 匀速节奏：每个好友之间固定间隔，而不是"突发 50 个再停 3 分钟"。
         //   第一个不等待（否则点下扫描后要空等 3 秒才看到动静）。
-        if (i > 0) await sleep(REQUEST_INTERVAL_MS)
+        if (i > 0) await sleep(reqIntervalMs)
 
         this.progress({
           phase: 'scanning',
@@ -804,13 +828,13 @@ export class Watcher {
             attempt++
             console.warn(
               `[scan] 获取 ${id} 的资料失败（第 ${attempt - 1} 次）：${reason} —— ` +
-                `${REQUEST_INTERVAL_MS / 1000} 秒后重试`,
+                `${reqIntervalMs / 1000} 秒后重试`,
             )
             /*
              * 重试之间**也走同样的匀速间隔**，而不是立刻重发。
              * 否则"失败重试"就变成了突发请求 —— 那正是限流器最反感的形态。
              */
-            await sleep(REQUEST_INTERVAL_MS)
+            await sleep(reqIntervalMs)
             continue
           }
 

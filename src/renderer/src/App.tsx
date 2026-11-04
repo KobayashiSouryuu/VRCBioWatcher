@@ -72,6 +72,9 @@ export default function App(): JSX.Element {
     startMinimized: false,
     minimizeToTray: true,
     hardwareAcceleration: true,
+    autoScanEnabled: true,
+    autoScanIntervalHours: 12,
+    friendRequestIntervalMs: 3000,
     windowBounds: null,
     windowMaximized: false,
     encryptData: false,
@@ -282,7 +285,26 @@ export default function App(): JSX.Element {
   }, [])
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
-    void window.vrcbw.updateSettings(patch).then(setSettings)
+    void window.vrcbw.updateSettings(patch).then((next) => {
+      setSettings(next)
+      /*
+       * ★ 改完设置顺手刷新一次「扫描摘要」。
+       *
+       * 为什么需要：概览页显示的「下次自动扫描时间」、以及设置页里那些
+       * 由 summary 驱动的文字（间隔小时数等），都来自主进程算出来的摘要。
+       * 而摘要有自己的定时刷新节奏（1 分钟）—— 用户刚把 12 小时改成 6 小时，
+       * 界面上却还要再等一分钟才变，看起来就像"设置没生效"（用户反馈过）。
+       *
+       * 只取 summary（不含好友/变化记录），很便宜；设置变更是低频操作，
+       * 所以这里不做条件判断，任何设置变更都刷一下，行为最简单也最不会漏。
+       */
+      void window.vrcbw
+        .getScanSummary()
+        .then(setSummary)
+        .catch(() => {
+          /* 忽略 */
+        })
+    })
   }, [])
 
   const i18n = useMemo(() => {
@@ -430,6 +452,10 @@ export default function App(): JSX.Element {
                     void window.vrcbw.clearTestChanges().then(() => refreshScanData())
                   }}
                   isDev={info?.isDev ?? false}
+                  onRefreshSummary={() => {
+                    // 只刷新摘要（不含好友/变化记录）—— 关闭提示后让侧栏标记同步消失
+                    void window.vrcbw.getScanSummary().then(setSummary).catch(() => {})
+                  }}
                 />
               ) : null}
 
@@ -512,6 +538,16 @@ export default function App(): JSX.Element {
                   hardwareAcceleration={settings.hardwareAcceleration}
                   onHardwareAccelerationChange={(hardwareAcceleration) =>
                     updateSettings({ hardwareAcceleration })
+                  }
+                  autoScanEnabled={settings.autoScanEnabled}
+                  onAutoScanEnabledChange={(autoScanEnabled) => updateSettings({ autoScanEnabled })}
+                  autoScanIntervalHours={settings.autoScanIntervalHours}
+                  onAutoScanIntervalHoursChange={(autoScanIntervalHours) =>
+                    updateSettings({ autoScanIntervalHours })
+                  }
+                  friendRequestIntervalMs={settings.friendRequestIntervalMs}
+                  onFriendRequestIntervalChange={(friendRequestIntervalMs) =>
+                    updateSettings({ friendRequestIntervalMs })
                   }
                   summary={summary}
                   info={info}

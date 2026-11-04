@@ -178,8 +178,6 @@ const zh = {
   /**
    * 数据来源说明。用户明确要求在界面上讲清楚"和 VRCX 不一样"这件事。
    */
-  dataSourceNote:
-    '**所有变化都来自定期扫描，不是实时推送** —— 这一点与 VRCX 不同。原因是 VRChat 在 v1.21.0 把简介从 WebSocket 推送里移除了（VRCX 也因此放弃了「简介变化」这个功能），所以简介只能靠轮询对比。\n因此界面上显示的时间是**发现变化的那次扫描的时间**，最多可能比对方实际修改的时间晚一个扫描周期（默认 10 小时）。本工具是**为查看简介变化而设计**的，不是好友动态监控。',
 
   // --- 好友详情抽屉 ---
   drawerCurrentBio: '当前简介',
@@ -201,12 +199,6 @@ const zh = {
   fieldFriendRemoved: '解除好友',
 
   // --- 设置：限流与账号安全 ---
-  riskLastLimited: '上次触发限流的时间：{time}（冷却已结束）',
-  riskNeverLimited: '目前没有触发过限流。',
-  riskReportNote:
-    '⚠ **如果你在使用中触发了 429（限流）**，请到项目的 GitHub 仓库反馈这个情况，并**建议暂时停止使用本工具**：那说明当前的请求节奏对你的账号来说偏快，需要重新评估参数后再继续。',
-  logNote:
-    '程序会记录每次扫描的完整过程：账号、好友总数、请求节奏、跳过数、变化数、每一次 429。反馈问题时请一并提供这些日志。',
 
   // --- 独立登录页 ---
   loginPageTitle: APP_NAME,
@@ -218,18 +210,9 @@ const zh = {
     '**密码不会被保存**，只在登录时用一次。保存的是会话凭据，用 Windows 系统加密（DPAPI）保护。',
 
   // --- 设置：扫描节奏与账号安全 ---
-  pacingTitle: '扫描节奏与账号安全',
   scanEstimate:
-    '当前有 **{count}** 个好友。每个好友之间间隔 **{seconds} 秒**，一轮约需 **{minutes} 分钟**。',
-  scanLongWarning:
-    '好友越多，一轮扫描就越久 —— 这是**刻意的**。VRChat 从未公布限流（429）阈值，把请求摊开、拉长间隔，是为了尽量避免触发限流（触发后可能导致账号被临时限制甚至封停）。',
-  scanScheduleNote:
-    '**自动扫描**：每 **{hours} 小时**一次（从**扫描完成**时刻开始计时）。打开软件时如果已经超过这个间隔，会自动补一次扫描。\n**手动扫描**：最快每 **{manualHours} 小时**一次，同样从扫描完成开始计时。',
-  scanRateLimitNote:
-    '一旦触发限流（429），会**立刻中断本轮扫描**并强制冷却 **{cooldownHours} 小时**。冷却记录写在数据文件里，重启软件也绕不过去。',
-  manualWaitNote: '距下次可以手动扫描还有约 {minutes} 分钟。',
-  nextAutoScanNote: '下次自动扫描：{time}',
-  nextAutoScanNone: '下次自动扫描：完成一次扫描后开始计时',
+    '当前有 **{count}** 个好友，每个好友之间间隔 **{seconds} 秒**，一轮约需 **{minutes} 分钟**',
+  manualWaitNote: '手动扫描有强制 {hours} 小时间隔，距下次可以手动扫描还有约 {minutes} 分钟',
 
   // --- 设置：启动行为 ---
   startupTitle: '首选项',
@@ -240,6 +223,17 @@ const zh = {
   minimizeToTrayHint: '（默认开启；关闭此选项后，点关闭窗口会终止程序，同时也会停止扫描）',
   gpuAccelLabel: '启用 GPU 加速',
   gpuAccelHint: '（默认开启；如果 UI 显示有问题可以尝试关闭此选项，更改后重启软件生效）',
+
+  // --- 设置页：「扫描」分组 ---
+  scanSettingsTitle: '扫描',
+  autoScanIntervalLabel: '自动扫描间隔',
+  /** 设置里那个按钮：点它把自动扫描关掉 */
+  autoScanOff: '关闭自动扫描',
+  /** 概览/设置里作为**状态**显示：现在处于关闭状态 */
+  autoScanOffStat: '自动扫描已关闭',
+  hoursShort: '{hours} 小时',
+  friendIntervalLabel: '扫描好友间隔',
+  secondsShort: '{seconds} 秒',
 
   // --- 关于页 ---
   navAbout: '关于',
@@ -307,10 +301,9 @@ const zh = {
   pageSizeNote: '条（10–500，好友列表与变化记录共用）',
   pageSizeAutoLabel: '好友列表每页条数自动',
   pageSizeAutoChangesLabel: '变化记录每页条数自动',
-  pageSizeAutoNote: '自动 = 按窗口高度算到刚好不出现滚动条。取消勾选后用手动条数。',
+  pageSizeAutoNote: '自动 = 按窗口高度算到刚好不出现滚动条，取消勾选后用手动条数',
   showRemovedLabel: '在好友列表中显示已解除的好友',
-  showRemovedNote:
-    '默认关闭：已经不是好友了就不显示。历史记录仍然保留（在变化记录里还能看到）。',
+  showRemovedNote: '默认关闭：已经不是好友了就不显示，历史记录仍然保留（在变化记录里还能看到）',
 
   // --- 设置：数据 ---
   dataTitle: '数据',
@@ -364,7 +357,9 @@ const zh = {
   scanDoneNoChange: '扫描完成：检查 {done} 个好友，没有发现变化（这是常态）',
   scanDoneChanges: '扫描完成：检查 {done} 个好友，发现 {found} 处变化',
   scanRateLimited:
-    '遇到限流（429），已立刻中断本轮扫描 —— 这是刻意的保守策略，不是故障。已完成的 {done} 个好友进度已保存。为保护账号，接下来 {hours} 小时内不会开始新扫描。',
+    '**触发了限流（429）** —— 已立刻中断本轮扫描（这是刻意的保守策略，不是故障；已完成的 {done} 个好友进度已保存）。为保护账号，接下来 {hours} 小时内不会开始新扫描。\n\n**建议停止使用本软件**，或将「设置 → 扫描 → 扫描好友间隔」更改为 **3 秒**。',
+  /** 429 横幅的标题（和其它异常区分开，并且这条**没有**「知道了」按钮） */
+  rateLimitedTitle: '触发了限流（429）',
   scanManualTooSoon:
     '距上次扫描不足 {hours} 小时，还需等待约 {minutes} 分钟才能手动扫描。（自动扫描不受此限制）',
   scanAutoStarted: '已到自动扫描时间，正在自动开始扫描…',
@@ -530,8 +525,6 @@ const ja: Record<TKey, string> = {
   pageJumpUnit: 'ページ',
   autoPageHint: '自動 = ウィンドウの高さに合わせて、スクロールが出ない件数（現在 {n} 件）',
   scanTimeSuffix: '（スキャン時刻）',
-  dataSourceNote:
-    '**すべての変更は定期スキャンで検出したもので、リアルタイム通知ではありません** —— ここが VRCX と異なります。VRChat が v1.21.0 で自己紹介を WebSocket 通知から削除したため（VRCX も「自己紹介の変更」機能を断念しました）、自己紹介はポーリングでしか取得できません。\nしたがって画面の時刻は**変更を検出したスキャンの時刻**であり、実際に変更された時刻より最大 1 周期（既定 10 時間）遅れる可能性があります。本ツールは**自己紹介の変化を見るためのもの**で、フレンドの動向監視ではありません。',
 
   drawerCurrentBio: '現在の自己紹介',
   noBio: '（自己紹介なし）',
@@ -550,12 +543,6 @@ const ja: Record<TKey, string> = {
   fieldFriendAdded: 'フレンド追加',
   fieldFriendRemoved: 'フレンド解除',
 
-  riskLastLimited: '前回レート制限を受けた日時：{time}（クールダウンは終了しています）',
-  riskNeverLimited: 'これまでレート制限は発生していません。',
-  riskReportNote:
-    '⚠ **使用中に 429（レート制限）が発生した場合**は、GitHub リポジトリで状況をご報告ください。そのうえで**本ツールの使用を一旦中止することをおすすめします** —— 現在のリクエスト間隔があなたのアカウントには速すぎる可能性があり、設定を見直す必要があります。',
-  logNote:
-    'プログラムは各スキャンの詳細（アカウント、フレンド総数、リクエスト間隔、スキップ数、変更数、429 の発生）を記録します。問題を報告する際はこれらのログも添えてください。',
 
   // --- 独立登录页 ---
   loginPageTitle: APP_NAME,
@@ -567,17 +554,8 @@ const ja: Record<TKey, string> = {
     '**パスワードは保存されません**。ログイン時に一度だけ使用します。保存されるのはセッション情報で、Windows の暗号化（DPAPI）で保護されます。',
 
   // --- 設定：スキャン間隔 ---
-  pacingTitle: 'スキャン間隔とアカウントの安全',
-  scanEstimate: '現在 **{count}** 人のフレンドがいます。1 人あたり **{seconds} 秒**間隔なので、1 回に約 **{minutes} 分**かかります。',
-  scanLongWarning:
-    'フレンドが多いほど 1 回のスキャンは長くなります。これは**意図的**です。VRChat はレート制限（429）のしきい値を公表しておらず、リクエストを分散して間隔を空けることで、制限（最悪の場合はアカウント停止）を避けています。',
-  scanScheduleNote:
-    '**自動スキャン**：**{hours} 時間**ごと（**スキャン完了**時点から計測）。起動時にこの間隔を過ぎていれば自動で 1 回実行します。\n**手動スキャン**：最短 **{manualHours} 時間**に 1 回（同じく完了時刻から計測）。',
-  scanRateLimitNote:
-    'レート制限（429）を受けると、**その回のスキャンを即中断**し **{cooldownHours} 時間**の強制クールダウンに入ります。クールダウンはデータファイルに記録され、再起動しても回避できません。',
-  manualWaitNote: '次に手動スキャンできるまで約 {minutes} 分です。',
-  nextAutoScanNote: '次回の自動スキャン：{time}',
-  nextAutoScanNone: '次回の自動スキャン：スキャン完了後に計測が始まります',
+  scanEstimate: '現在 **{count}** 人のフレンドがいます。1 人あたり **{seconds} 秒**間隔なので、1 回に約 **{minutes} 分**かかります',
+  manualWaitNote: '手動スキャンには {hours} 時間の強制間隔があります。次に手動スキャンできるまで約 {minutes} 分です',
 
   // --- 設定：起動と終了 ---
   startupTitle: '環境設定',
@@ -589,6 +567,14 @@ const ja: Record<TKey, string> = {
   gpuAccelLabel: 'GPU アクセラレーションを有効にする',
   gpuAccelHint:
     '（既定でオン。UI の表示に問題がある場合は、この項目をオフにしてみてください。変更後は再起動が必要です）',
+
+  scanSettingsTitle: 'スキャン',
+  autoScanIntervalLabel: '自動スキャンの間隔',
+  autoScanOff: '自動スキャンをオフ',
+  autoScanOffStat: '自動スキャンはオフです',
+  hoursShort: '{hours} 時間',
+  friendIntervalLabel: 'フレンド間の待ち時間',
+  secondsShort: '{seconds} 秒',
 
   // --- 概要ページ ---
   navAbout: 'このアプリについて',
@@ -708,7 +694,8 @@ const ja: Record<TKey, string> = {
   scanDoneNoChange: 'スキャン完了：{done} 人を確認、変更はありませんでした（通常どおりです）',
   scanDoneChanges: 'スキャン完了：{done} 人を確認、{found} 件の変更を検出しました',
   scanRateLimited:
-    'レート制限（429）を受けたため、即座に今回のスキャンを中断しました。これは意図的な安全策であり、不具合ではありません。確認済みの {done} 人の進捗は保存されています。アカウント保護のため、次の {hours} 時間は新しいスキャンを開始しません。',
+    '**レート制限（429）が発生しました** —— 今回のスキャンは即座に中断しました（意図的な安全策であり、不具合ではありません。確認済みの {done} 人の進捗は保存済み）。アカウント保護のため、次の {hours} 時間は新しいスキャンを開始しません。\n\n**本ソフトの使用を中止する**か、「設定 → スキャン → フレンド間の待ち時間」を **3 秒**に変更してください。',
+  rateLimitedTitle: 'レート制限（429）が発生しました',
   scanManualTooSoon:
     '前回のスキャンから {hours} 時間経過していません。手動スキャンまで約 {minutes} 分お待ちください。（自動スキャンはこの制限を受けません）',
   scanAutoStarted: '自動スキャンの時刻になりました。自動で開始します…',
@@ -869,8 +856,6 @@ const en: Record<TKey, string> = {
   pageJumpUnit: '',
   autoPageHint: 'Auto = fits the window height without a scrollbar ({n} rows right now)',
   scanTimeSuffix: ' (scan time)',
-  dataSourceNote:
-    '**Every change here was found by a periodic scan, not pushed in real time** — this differs from VRCX. VRChat removed bios from the WebSocket payload in v1.21.0 (which is why VRCX gave up on its “bio changes” feature), so bios can only be obtained by polling.\nThe timestamps you see are therefore **the time of the scan that discovered the change**, which may lag the actual edit by up to one scan cycle (10 hours by default). This tool is **built for watching bio changes**, not for monitoring friend activity.',
 
   drawerCurrentBio: 'Current bio',
   noBio: '(no bio)',
@@ -889,25 +874,11 @@ const en: Record<TKey, string> = {
   fieldFriendAdded: 'Friend added',
   fieldFriendRemoved: 'Friend removed',
 
-  riskLastLimited: 'Last rate limit: {time} (cooldown has ended)',
-  riskNeverLimited: 'No rate limit has been triggered so far.',
-  riskReportNote:
-    '⚠ **If you ever hit a 429 (rate limit) while using this tool**, please report it on the project’s GitHub repository and **consider stopping use of the tool**: it means the current request pacing is too fast for your account and the parameters need to be re-evaluated before continuing.',
-  logNote:
-    'The program records the full details of every scan: account, friend count, request pacing, skipped count, change count, and every 429. Please include those logs when reporting an issue.',
 
-  pacingTitle: 'Scan pacing and account safety',
   scanEstimate:
-    'You have **{count}** friends. With a **{seconds}-second** gap between each, one full pass takes about **{minutes} minutes**.',
-  scanLongWarning:
-    'The more friends you have, the longer one pass takes — and that is **deliberate**. VRChat has never published its rate-limit (429) threshold, so spreading requests out and lengthening the gap is how we avoid tripping it (which can lead to a temporary restriction or even a suspension).',
-  scanScheduleNote:
-    '**Automatic scans**: every **{hours} hours**, timed from the moment a scan *completes*. If that interval has already elapsed when you launch the app, it scans once automatically.\n**Manual scans**: at most once every **{manualHours} hours**, also timed from completion.',
-  scanRateLimitNote:
-    'A single rate limit (429) **aborts the current scan immediately** and forces a **{cooldownHours}-hour cooldown**. The cooldown is stored in the data file, so restarting the app does not bypass it.',
-  manualWaitNote: 'About {minutes} more minutes until you can scan manually.',
-  nextAutoScanNote: 'Next automatic scan: {time}',
-  nextAutoScanNone: 'Next automatic scan: timed after the first completed scan',
+    'You have **{count}** friends; with a **{seconds}-second** gap between each, one full pass takes about **{minutes} minutes**',
+  manualWaitNote:
+    'Manual scans have a forced {hours}-hour gap; about {minutes} more minutes until you can scan manually',
 
   // --- Startup and shutdown ---
   startupTitle: 'Preferences',
@@ -919,6 +890,14 @@ const en: Record<TKey, string> = {
   gpuAccelLabel: 'Enable GPU acceleration',
   gpuAccelHint:
     '(On by default. If the UI looks wrong, try turning this off. Restart required.)',
+
+  scanSettingsTitle: 'Scanning',
+  autoScanIntervalLabel: 'Automatic scan interval',
+  autoScanOff: 'Turn off',
+  autoScanOffStat: 'Automatic scanning is off',
+  hoursShort: '{hours} h',
+  friendIntervalLabel: 'Delay between friends',
+  secondsShort: '{seconds} s',
 
   // --- About page ---
   navAbout: 'About',
@@ -1048,7 +1027,8 @@ const en: Record<TKey, string> = {
   scanDoneNoChange: 'Scan finished: {done} friends checked, no changes found (this is normal)',
   scanDoneChanges: 'Scan finished: {done} friends checked, {found} changes found',
   scanRateLimited:
-    'Received a rate limit (429), so this scan was aborted immediately — that is a deliberate safety measure, not a malfunction. Progress for the {done} friends already checked has been saved. To protect your account, no new scan will start for {hours} hours.',
+    '**A rate limit (429) was triggered** — this scan was aborted immediately (a deliberate safety measure, not a malfunction; progress for the {done} friends already checked was saved). To protect your account, no new scan will start for {hours} hours.\n\n**Please stop using this app**, or set "Settings → Scanning → Delay between friends" to **3 seconds**.',
+  rateLimitedTitle: 'Rate limit triggered (429)',
   scanManualTooSoon:
     'It has been less than {hours} hours since the last scan; about {minutes} more minutes until a manual scan is allowed. (Automatic scans are not affected.)',
   scanAutoStarted: 'The automatic scan is due — starting it now…',

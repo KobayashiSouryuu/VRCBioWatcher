@@ -27,6 +27,7 @@ export function Overview({
   onSelectFriend,
   onClearTest,
   isDev,
+  onRefreshSummary,
 }: {
   auth: AuthState | null
   busy: boolean
@@ -44,6 +45,13 @@ export function Overview({
   onSelectFriend: (userId: string) => void
   onClearTest: () => void
   isDev: boolean
+  /**
+   * 重新拉一次扫描摘要（只有摘要，不含好友/变化记录，很便宜）。
+   *
+   * 用途：点「知道了」清除提示之后，立刻把 summary 更新掉 ——
+   * 否则侧栏那个「!」标记要等到下一次定时刷新（最多 1 分钟）才消失。
+   */
+  onRefreshSummary: () => void
 }): JSX.Element {
   const i18n = useI18n()
   const { t, locale } = i18n
@@ -70,12 +78,22 @@ export function Overview({
   const neverScanned = loggedIn && !summary?.lastScanAt
 
   /**
-   * 上一轮扫描的异常横幅。用本地状态记录"本次会话已关闭"，
-   * 不持久化 —— 下次打开软件时如果问题还在（数据里还有 lastScanWarning），就该再提醒一次。
+   * 上一轮扫描的异常横幅。
+   *
+   * ## 为什么要记住"关掉的是哪一条"，而不是一个 bool
+   *
+   * 以前这里是 `useState(false)`：点了「知道了」就藏起来 —— 但那个 state 活在组件里，
+   * **切到别的页面再切回来**（Overview 会卸载重挂）、或者重新登录，它就没了，
+   * 横幅原样回来 ✗ 用户反馈的现象就是"按了没用 / 关不掉"。
+   *
+   * 现在做两件事：
+   *   1. 记下被关掉的那条警告的时间戳（`at`）—— 只有**同一条**被隐藏，
+   *      之后真的又出了一条新警告（at 不同）照样会显示 ✓
+   *   2. 通知主进程把它从数据里清掉（`onAcknowledgeWarning`）—— 彻彻底底不再回来 ✓
    */
   const warning = summary?.lastScanWarning ?? null
-  const [warningDismissed, setWarningDismissed] = useState(false)
-  const showWarning = loggedIn && warning !== null && !warningDismissed
+  const [dismissedWarningAt, setDismissedWarningAt] = useState<string | null>(null)
+  const showWarning = loggedIn && warning !== null && warning.at !== dismissedWarningAt
 
   /*
    * ★ 本地数据文件读取失败的横幅（fatal 级别，比扫描异常严重得多）。
@@ -83,11 +101,33 @@ export function Overview({
    * 场景：store.json 损坏 → 主进程把它改名备份、以空数据继续跑。
    * 如果不显眼地告诉用户，他只会看到"好友和变化记录全没了"，
    * 然后以为是我们把数据弄丢了 —— 实际上原文件就在备份路径里。
-   * 同样用"本次会话可关闭"的方式，不持久化。
+   * 关闭逻辑与上面同理，按"内容"记住被关掉的是哪一条。
    */
   const dataError = summary?.dataLoadError ?? null
-  const [dataErrorDismissed, setDataErrorDismissed] = useState(false)
-  const showDataError = loggedIn && dataError !== null && !dataErrorDismissed
+  const [dismissedDataError, setDismissedDataError] = useState<string | null>(null)
+  const showDataError = loggedIn && dataError !== null && dataError !== dismissedDataError
+
+  /** 关闭"上一轮扫描异常"横幅：本地先藏起来（立刻有反馈），再通知主进程清掉 */
+  const dismissWarning = (): void => {
+    if (warning) setDismissedWarningAt(warning.at)
+    void window.vrcbw
+      .acknowledgeNotice('scanWarning')
+      .then(() => onRefreshSummary()) // 让侧栏的「!」标记也立刻消失
+      .catch(() => {
+        /* 忽略：清不掉也只是下次再显示一次横幅 */
+      })
+  }
+
+  /** 关闭"数据读取失败"横幅，同上 */
+  const dismissDataError = (): void => {
+    if (dataError) setDismissedDataError(dataError)
+    void window.vrcbw
+      .acknowledgeNotice('dataError')
+      .then(() => onRefreshSummary())
+      .catch(() => {
+        /* 忽略 */
+      })
+  }
 
   return (
     <>
@@ -109,7 +149,7 @@ export function Overview({
         <section className="card warning-card">
           <div className="card-head-row">
             <h2>⚠ {t('dataErrorTitle')}</h2>
-            <button type="button" className="ghost" onClick={() => setDataErrorDismissed(true)}>
+            <button type="button" className="ghost" onClick={dismissDataError}>
               {t('warningDismiss')}
             </button>
           </div>
@@ -123,14 +163,22 @@ export function Overview({
       {/*
         ★ 异常横幅。扫描跑在后台、窗口常常关着，所以"上一轮其实全失败了"这件事
           必须显眼地留在界面上，而不是只在扫描结束时闪一下。
+
+        ## 为什么 429 这一条**没有**「知道了」
+        限流是唯一"用户应该立刻改变行为"的情况（停止使用、或把好友间隔调回 3 秒）。
+        给它一个可以随手点掉的按钮，就等于允许用户把它从眼前抹掉然后继续用 ——
+        所以这里不给关闭按钮；只有等下一次手动/自动扫描正常跑完、没有再次触发问题，
+        这条横幅才会随 lastScanWarning 一起被清掉（扫描开始时会清空上一轮警告）。
       */}
       {showWarning && warning ? (
         <section className="card warning-card">
           <div className="card-head-row">
-            <h2>⚠ {t('warningTitle')}</h2>
-            <button type="button" className="ghost" onClick={() => setWarningDismissed(true)}>
-              {t('warningDismiss')}
-            </button>
+            <h2>⚠ {warning.code === 'rateLimited' ? t('rateLimitedTitle') : t('warningTitle')}</h2>
+            {warning.code === 'rateLimited' ? null : (
+              <button type="button" className="ghost" onClick={dismissWarning}>
+                {t('warningDismiss')}
+              </button>
+            )}
           </div>
           <p>{rich(scanMessage({ messageCode: warning.code, messageParams: warning.params }, i18n))}</p>
           <p className="muted">{t('warningAt', { time: formatTime(warning.at, locale) })}</p>
@@ -146,7 +194,7 @@ export function Overview({
             {rich(
               t('firstRunPacing', {
                 seconds: intervalSec,
-                autoHours: summary?.autoScanIntervalHours ?? 10,
+                autoHours: summary?.autoScanIntervalHours ?? 12,
                 manualHours: summary?.manualScanMinIntervalHours ?? 2,
                 cooldownHours: summary?.rateLimitCooldownHours ?? 10,
               }),
@@ -180,7 +228,14 @@ export function Overview({
             className="primary-big"
             onClick={onStart}
             disabled={!loggedIn || running || manualWaitMinutes > 0}
-            title={manualWaitMinutes > 0 ? t('manualWaitNote', { minutes: manualWaitMinutes }) : undefined}
+            title={
+              manualWaitMinutes > 0
+                ? t('manualWaitNote', {
+                    hours: summary?.manualScanMinIntervalHours ?? 2,
+                    minutes: manualWaitMinutes,
+                  })
+                : undefined
+            }
           >
             {running
               ? t('scanningButton')
@@ -232,18 +287,24 @@ export function Overview({
           </div>
           <div className="scan-stat">
             <span className="n">
-              {summary?.nextAutoScanAt
-                ? formatTime(summary.nextAutoScanAt, locale)
-                : /* 从未扫描过 → 不会有自动扫描，不要显示"—"让人以为是坏了 */
-                  neverScanned
-                  ? t('statNoData')
-                  : '—'}
+              {/*
+                自动扫描被用户在设置里关掉时显示「已关闭」，
+                而不是显示 "—" 或一个永远不变的时间（那会让人以为坏了）。
+              */}
+              {summary && !summary.autoScanEnabled
+                ? t('autoScanOffStat')
+                : summary?.nextAutoScanAt
+                  ? formatTime(summary.nextAutoScanAt, locale)
+                  : /* 从未扫描过 → 不会有自动扫描，不要显示"—"让人以为是坏了 */
+                    neverScanned
+                    ? t('statNoData')
+                    : '—'}
             </span>
             <span className="k">{t('statNextAutoScan')}</span>
           </div>
         </div>
 
-        {/* ★ 耗时预估 + 为什么这么久。用户明确要求在好友多的时候给出说明。 */}
+        {/* ★ 耗时预估（用户要求在好友多的时候给出说明）。 */}
         {friendCount > 0 ? (
           <p className="muted">
             {rich(
@@ -255,9 +316,13 @@ export function Overview({
             )}
           </p>
         ) : null}
-        <p className="muted">{rich(t('scanLongWarning'))}</p>
         {!running && manualWaitMinutes > 0 ? (
-          <p className="muted">{t('manualWaitNote', { minutes: manualWaitMinutes })}</p>
+          <p className="muted">
+            {t('manualWaitNote', {
+              hours: summary?.manualScanMinIntervalHours ?? 2,
+              minutes: manualWaitMinutes,
+            })}
+          </p>
         ) : null}
       </section>
 
